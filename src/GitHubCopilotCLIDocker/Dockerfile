@@ -33,6 +33,9 @@ apt-get install -y --no-install-recommends \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
+# Pre-install the Azure DevOps MCP package globally so npx doesn't download it at runtime
+RUN npm install -g @azure-devops/mcp@latest
+
 # Copy the copilot binary from the installer stage
 COPY --from=installer /usr/local/bin/copilot /usr/local/bin/copilot
 

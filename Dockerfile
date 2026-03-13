@@ -20,9 +20,10 @@ WORKDIR /app
 COPY --from=build /app/publish .
 
 # Create writable work directory for the non-root user
-RUN mkdir -p /output && \
-    chown "$APP_UID":"$APP_UID" /output && \
-    chmod 755 /output
+# /sources is the mount point for the local repository clone
+RUN mkdir -p /output /sources && \
+    chown "$APP_UID":"$APP_UID" /output /sources && \
+    chmod 755 /output /sources
 
 # Run as non-root user for security
 USER $APP_UID

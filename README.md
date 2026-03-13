@@ -39,11 +39,11 @@ The review output is a Markdown report that can be saved to a file or posted dir
 └──────────────┘      └─────────────────┘
 ```
 
-1. The agent receives a pull request ID and ADO coordinates (org, project, repo) via CLI arguments.
+1. The agent receives a pull request ID, ADO coordinates (org, project, repo), and a **local sources directory** via CLI arguments.
 2. It starts a local [GitHub Copilot CLI](https://github.com/github/copilot-cli) session and configures two MCP servers:
    - **Azure DevOps MCP** — to retrieve PR details, diffs, and related work items
    - **Microsoft Learn MCP** — to look up relevant best practices documentation
-3. A detailed [system prompt](src/ADOPullRequestAgent/pullreview.prompt) instructs the model to act as a senior staff/principal engineer performing a rigorous, structured code review.
+3. A detailed [system prompt](src/ADOPullRequestAgent/pullreview.prompt) instructs the model to act as a senior staff/principal engineer performing a rigorous, structured code review. The prompt is configured with the local sources directory so the model can run **git CLI commands** on the cloned repository as its primary method for examining code changes.
 4. The model's review is returned as a Markdown report with severity-tagged findings and suggested patches.
 
 ## Prerequisites
@@ -98,9 +98,12 @@ dotnet run --project src/ADOPullRequestAgent -- \
   --project-name <project> \
   --repository-name <repo> \
   --model <model (i.e. "claude-sonnet-4.5")> \
+  --sources-directory /path/to/local/clone \
   --cli-os-platform <windows|unix|osx> \
   --output-directory .
 ```
+
+The `--sources-directory` option points to the local directory where the repository source code is cloned. The agent uses this path to run git commands and read source files during the review.
 
 The `--output-directory` option writes the review to `pull_request_<id>_review.md` in the specified directory.
 
@@ -114,9 +117,10 @@ The `--output-directory` option writes the review to `pull_request_<id>_review.m
 | `--project-name` | `-p` | Azure DevOps project name (required) |
 | `--repository-name` | `-r` | Azure DevOps repository name (required) |
 | `--model` | `-m` | The model to use for the agent (required) |
+| `--sources-directory` | `-sd` | The local directory path where the repository source code is cloned (required) |
 | `--cli-port` | `-cp` | The port number for the CLI (defaults to 4321) |
 | `--cli-os-platform` | | The OS platform where the CLI is running: `windows`, `unix`, or `osx` (defaults to `unix`) |
-| `--output-directory` | | The directory to save review output to a Markdown file (optional) |
+| `--output-directory` | | The directory to save the agent work steps output to a file (optional) |
 
 ### Docker
 
@@ -125,6 +129,7 @@ Build and run the agent as a container:
 ```bash
 docker build -t ado-pr-agent .
 docker run --rm \
+  -v /path/to/local/clone:/sources \
   ado-pr-agent \
   --ado-token "<ado-token>" \
   --pull-request-id <pr-id> \
@@ -132,6 +137,7 @@ docker run --rm \
   --project-name <project> \
   --repository-name <repo> \
   --model <model (i.e. "claude-sonnet-4.5")> \
+  --sources-directory /sources \
   --cli-os-platform unix
 ```
 
@@ -158,8 +164,9 @@ These should be configured in a variable group (e.g., `GitHub-Copilot`):
 |---|---|
 | `COPILOT_GITHUB_TOKEN` | GitHub PAT with Copilot scope |
 | `ACR_NAME` | Azure Container Registry name |
-| `ACR_SERVICECONNECTION_NAME` | ACR service connection |
+| `DOCKER_SERVICECONNECTION_NAME` | ACR service connection |
 | `ADO_ORGANIZATION_NAME` | Azure DevOps organization |
+| `MODEL_NAME` | The AI model to use for the agent (e.g., `claude-sonnet-4.6`) |
 
 > [!NOTE]
 > The pipeline uses `$(System.AccessToken)` for Azure DevOps authentication, so no additional ADO PAT is required when running within a pipeline.
@@ -171,6 +178,7 @@ These should be configured in a variable group (e.g., `GitHub-Copilot`):
 │   ├── ADOPullRequestAgent/        # Main .NET console application
 │   │   ├── Program.cs              # CLI entry point (System.CommandLine)
 │   │   ├── PullRequestAgent.cs     # Core agent logic / Copilot SDK orchestration
+│   │   ├── AgentOptions.cs         # Configuration options for the agent
 │   │   └── pullreview.prompt       # System prompt for the code review
 │   └── GitHubCopilotCLIDocker/     # Docker image for GitHub Copilot CLI
 ├── .azdo/

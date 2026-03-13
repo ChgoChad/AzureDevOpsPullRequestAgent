@@ -63,6 +63,11 @@ namespace ADOPullRequestAgent
             {
                 Description = "The directory to save the agent work steps output to a file (optional)."
             };
+            Option<string> sourcesDirectoryOption = new Option<string>("--sources-directory", "-sd")
+            {
+                Description = "The local directory path where the repository source code is cloned. The agent uses this path to run git commands and read source files during the review.",
+                Required = true
+            };
             Option<string> cliOsPlatformOption = new Option<string>("--cli-os-platform")
             {
                 Description = "The OS platform where the CLI is running. Possible values: windows, unix, osx. Defaults to Unix.",
@@ -98,6 +103,7 @@ namespace ADOPullRequestAgent
             rootCommand.Options.Add(outputDirectoryOption);
             rootCommand.Options.Add(cliPortOption);
             rootCommand.Options.Add(modelOption);
+            rootCommand.Options.Add(sourcesDirectoryOption);
             rootCommand.Options.Add(cliOsPlatformOption);
 
             var parseResult = rootCommand.Parse(args);
@@ -124,19 +130,29 @@ namespace ADOPullRequestAgent
             var outputDirectory = parseResult.GetValue<string>(outputDirectoryOption);
             var cliPort = parseResult.GetValue<int>(cliPortOption);
             var model = parseResult.GetValue<string>(modelOption);
+            var sourcesDirectory = parseResult.GetRequiredValue<string>(sourcesDirectoryOption);
             var cliOsPlatform = parseResult.GetValue<string>(cliOsPlatformOption);
 
             var agentOptions = new AgentOptions
             {
                 Model = model!,
-                CliPort = cliPort
+                CliPort = cliPort,
+                SourcesDirectory = sourcesDirectory,
+                CliOsPlatform = Enum.Parse<PlatformID>(cliOsPlatform!)
             };
 
             var fileSystem = new FileSystem();
             var agent = new PullRequestAgent(fileSystem, token, agentOptions);
+
+            var totalStopwatch = Stopwatch.StartNew();
             var response = await agent.RunAsync(pullRequestId, organizationName, projectName, repositoryName);
+            totalStopwatch.Stop();
 
             Console.WriteLine(response);
+
+            Console.WriteLine();
+            Console.WriteLine("== Metrics ==");
+            Console.WriteLine($"Total processing time: {totalStopwatch.Elapsed.TotalSeconds:F2}s ({totalStopwatch.Elapsed})");
 
             if (!string.IsNullOrWhiteSpace(outputDirectory))
             {

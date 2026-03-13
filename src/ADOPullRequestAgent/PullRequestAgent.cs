@@ -1,4 +1,5 @@
-﻿using System.IO.Abstractions;
+﻿using System.Diagnostics;
+using System.IO.Abstractions;
 using System.Text;
 using GitHub.Copilot.SDK;
 using Microsoft.Extensions.Logging;
@@ -31,6 +32,7 @@ namespace ADOPullRequestAgent
         {
             // should optimize to not load everytime, but once, but considering this is run per pull request, the performance impact should be minimal
             var systemInstructions = await _fileSystem.File.ReadAllTextAsync("pullreview.prompt");
+            systemInstructions = systemInstructions.Replace("{{SOURCES_DIRECTORY}}", _agentOptions.SourcesDirectory);
 
             using (ILoggerFactory loggerFactory = LoggerFactory.Create(builder =>
                    {
@@ -67,7 +69,10 @@ namespace ADOPullRequestAgent
 
                 await using (var client = new CopilotClient(copilotOptions))
                 {
+                    var clientStartStopwatch = Stopwatch.StartNew();
                     await client.StartAsync();
+                    clientStartStopwatch.Stop();
+                    logger.LogInformation("[Metrics] Client startup: {Elapsed}", clientStartStopwatch.Elapsed);
                     
                     var mcpServers = new Dictionary<string, object>();
                     mcpServers["azure-devops"] = new McpLocalServerConfig
@@ -87,7 +92,7 @@ namespace ADOPullRequestAgent
                     var sessionConfig = new SessionConfig
                     {
                         Model = _agentOptions.Model,
-                        OnPermissionRequest = (_, _) => Task.FromResult(new PermissionRequestResult { Kind = "approved" }),
+                        OnPermissionRequest = (_, _) => Task.FromResult(new PermissionRequestResult { Kind = PermissionRequestResultKind.Approved }),
                         SystemMessage = new SystemMessageConfig
                         {
                             Content = systemInstructions,
@@ -96,8 +101,12 @@ namespace ADOPullRequestAgent
                         McpServers = mcpServers
                     };
 
+                    var sessionCreateStopwatch = Stopwatch.StartNew();
                     await using (var session = await client.CreateSessionAsync(sessionConfig))
                     {
+                        sessionCreateStopwatch.Stop();
+                        logger.LogInformation("[Metrics] Session creation: {Elapsed}", sessionCreateStopwatch.Elapsed);
+
                         var done = new TaskCompletionSource<object?>();
                         var sb = new StringBuilder();
 
@@ -122,12 +131,16 @@ namespace ADOPullRequestAgent
                             }
                         });
 
+                        var reviewStopwatch = Stopwatch.StartNew();
                         await session.SendAsync(new MessageOptions
                         {
-                            Prompt = $"Review the pull request number {pullRequestId} in Azure DevOps project {projectName} for the repository {repositoryName}"
+                            Prompt = $"Review the pull request number {pullRequestId} in Azure DevOps project {projectName} for the repository {repositoryName}. The repository source code is cloned locally at: {_agentOptions.SourcesDirectory}"
                         });
 
                         var res = await done.Task;
+                        reviewStopwatch.Stop();
+                        logger.LogInformation("[Metrics] Pull request review: {Elapsed}", reviewStopwatch.Elapsed);
+
                         if (res is SessionErrorEvent errorEvent)
                         {
                             throw new Exception($"An error occured while processing the request{(errorEvent.Data.StatusCode != null ? $" [Status Code {errorEvent.Data.StatusCode}]" : string.Empty)}: {errorEvent.Data.Message}.{(errorEvent.Data.Stack != null ? $"{Environment.NewLine}{errorEvent.Data.Stack}" : string.Empty)}");
