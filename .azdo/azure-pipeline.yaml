@@ -57,7 +57,12 @@ steps:
     artifact: 'PullRequestReview'
 
 - powershell: |
-    $reviewFile = "$(Build.ArtifactStagingDirectory)/copilot/copilot-review.md"
+    $summaryFile = "$(Build.ArtifactStagingDirectory)/copilot/copilot-review-summary.md"
+    if (Test-Path $summaryFile) {
+      $reviewFile = $summaryFile
+    } else {
+      $reviewFile = "$(Build.ArtifactStagingDirectory)/copilot/copilot-review.md"
+    }
     $content = Get-Content -Path $reviewFile -Raw
     $body = @{
       comments = @(@{ parentCommentId = 0; content = $content; commentType = 1 })
