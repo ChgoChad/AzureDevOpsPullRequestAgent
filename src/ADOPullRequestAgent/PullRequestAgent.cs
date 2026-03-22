@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.IO.Abstractions;
-using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
@@ -35,9 +34,13 @@ namespace ADOPullRequestAgent
         /// <returns>The review output as a string.</returns>
         public async Task<string> RunAsync(int pullRequestId, string organizationName, string projectName, string repositoryName)
         {
-            // Load the system prompt and inject the sources directory
+            // Load the system prompt and inject the sources directory and output directory
             var systemInstructions = await _fileSystem.File.ReadAllTextAsync("pullreview.prompt");
             systemInstructions = systemInstructions.Replace("{{SOURCES_DIRECTORY}}", _agentOptions.SourcesDirectory);
+            var outputDir = !string.IsNullOrWhiteSpace(_agentOptions.OutputDirectory)
+                ? _agentOptions.OutputDirectory
+                : _agentOptions.SourcesDirectory;
+            systemInstructions = systemInstructions.Replace("{{OUTPUT_DIRECTORY}}", outputDir);
 
             using var loggerFactory = LoggerFactory.Create(builder =>
             {
@@ -100,7 +103,7 @@ namespace ADOPullRequestAgent
                         command = "npx",
                         args = new[]
                         {
-                            "-y", "@azure-devops/mcp@latest", organizationName,
+                            "-y", "@azure-devops/mcp", organizationName,
                             "--domains", "core", "repositories", "search", "work", "work-items",
                             "--authentication", "envvar"
                         },
@@ -132,7 +135,6 @@ namespace ADOPullRequestAgent
                 "--model", _agentOptions.Model,
                 "--system-prompt-file", systemPromptPath,
                 "--mcp-config", mcpConfigPath,
-                "--dangerously-skip-permissions",
                 "--no-session-persistence"
             };
 
@@ -186,29 +188,14 @@ namespace ADOPullRequestAgent
 
             using var process = new Process { StartInfo = startInfo };
 
-            var stdoutBuilder = new StringBuilder();
-            var stderrBuilder = new StringBuilder();
-
-            process.OutputDataReceived += (_, e) =>
-            {
-                if (e.Data != null)
-                {
-                    stdoutBuilder.AppendLine(e.Data);
-                }
-            };
-
-            process.ErrorDataReceived += (_, e) =>
-            {
-                if (e.Data != null)
-                {
-                    logger.LogDebug("[claude stderr] {Line}", e.Data);
-                    stderrBuilder.AppendLine(e.Data);
-                }
-            };
-
             process.Start();
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
+
+            // Start reading stdout and stderr concurrently before writing stdin to prevent
+            // buffer deadlocks. ReadToEndAsync guarantees all output is drained before the
+            // tasks complete, unlike BeginOutputReadLine which can leave data in the buffer
+            // after WaitForExitAsync returns.
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
 
             // Pipe the user prompt to stdin and close it
             await process.StandardInput.WriteLineAsync(userPrompt);
@@ -222,11 +209,30 @@ namespace ADOPullRequestAgent
             }
             catch (OperationCanceledException)
             {
-                process.Kill(entireProcessTree: true);
+                try
+                {
+                    if (!process.HasExited)
+                    {
+                        process.Kill(entireProcessTree: true);
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    // Process may have already exited; ignore to keep timeout handling reliable
+                }
                 throw new TimeoutException($"Claude Code CLI did not complete within {ProcessTimeout.TotalMinutes} minutes. The process was terminated.");
             }
 
-            return (process.ExitCode, stdoutBuilder.ToString(), stderrBuilder.ToString());
+            // Await stream reads after exit to ensure all buffered output has been captured
+            var stdout = await stdoutTask;
+            var stderr = await stderrTask;
+
+            foreach (var line in stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                logger.LogDebug("[claude stderr] {Line}", line.TrimEnd('\r'));
+            }
+
+            return (process.ExitCode, stdout, stderr);
         }
 
         /// <summary>
