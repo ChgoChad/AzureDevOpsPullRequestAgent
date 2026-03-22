@@ -132,7 +132,6 @@ namespace ADOPullRequestAgent
                 "--model", _agentOptions.Model,
                 "--system-prompt-file", systemPromptPath,
                 "--mcp-config", mcpConfigPath,
-                "--dangerously-skip-permissions",
                 "--no-session-persistence"
             };
 
