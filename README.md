@@ -9,10 +9,6 @@ Automated, AI-powered code reviews for Azure DevOps pull requests — powered by
 
 [Overview](#overview) · [How it works](#how-it-works) · [Prerequisites](#prerequisites) · [Getting started](#getting-started) · [Azure DevOps pipeline integration](#azure-devops-pipeline-integration)
 
-## Demo
-
-https://github.com/user-attachments/assets/cc22d11f-778d-48cf-9c46-00af6540b4c7
-
 ## Overview
 
 ADO Pull Request Agent is a .NET console application that performs **automated code reviews** on Azure DevOps pull requests. It invokes [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) in non-interactive mode and uses the [Azure DevOps MCP server](https://github.com/microsoft/azure-devops-mcp) to fetch PR diffs, then produces a structured security-first review covering:
