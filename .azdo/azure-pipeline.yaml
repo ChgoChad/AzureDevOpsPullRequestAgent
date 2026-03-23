@@ -33,6 +33,7 @@ stages:
             #   -e ANTHROPIC_FOUNDRY_RESOURCE=$(ANTHROPIC_FOUNDRY_RESOURCE)
             # =============================================
             arguments: >-
+              --rm
               --name pr-agent-container
               -e ANTHROPIC_API_KEY=$(ANTHROPIC_API_KEY)
               -v $(Build.SourcesDirectory):/sources

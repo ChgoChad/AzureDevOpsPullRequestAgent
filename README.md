@@ -40,7 +40,8 @@ The review output is a Markdown report that can be saved to a file or posted dir
    - **Azure DevOps MCP** — to retrieve PR details, diffs, and related work items
    - **Microsoft Learn MCP** — to look up relevant best practices documentation
 3. A detailed [system prompt](src/ADOPullRequestAgent/pullreview.prompt) instructs the model to act as a senior staff/principal engineer performing a rigorous, structured code review. The prompt is configured with the local sources directory so the model can run **git CLI commands** on the cloned repository as its primary method for examining code changes.
-4. The model's review is returned as a Markdown report with severity-tagged findings and suggested patches.
+4. Claude's session is streamed in real-time via `--output-format stream-json` — tool calls, assistant reasoning, and review text appear live in the Azure DevOps pipeline logs as the review progresses.
+5. The final review is returned as a Markdown report with severity-tagged findings and suggested patches.
 
 ## Prerequisites
 

@@ -132,7 +132,7 @@ namespace ADOPullRequestAgent
             var args = new List<string>
             {
                 "-p",
-                "--output-format", "text",
+                "--output-format", "stream-json",
                 "--model", _agentOptions.Model,
                 "--system-prompt-file", systemPromptPath,
                 "--mcp-config", mcpConfigPath,
@@ -185,21 +185,20 @@ namespace ADOPullRequestAgent
 
             using var process = new Process { StartInfo = startInfo };
 
-            var stdoutBuilder = new StringBuilder();
+            var resultBuilder = new StringBuilder();
             var stderrBuilder = new StringBuilder();
 
             process.Start();
 
-            // Read stdout and stderr line-by-line in background tasks so output streams
-            // to the console in real-time (visible in pipeline logs) while also being
-            // accumulated for the return value. ReadLineAsync returns null at EOF.
+            // Read stdout JSONL events line-by-line, parse each event, and stream
+            // human-readable summaries to the console (visible in pipeline logs).
+            // The final review text is extracted from the "result" event.
             var stdoutTask = Task.Run(async () =>
             {
                 string? line;
                 while ((line = await process.StandardOutput.ReadLineAsync()) != null)
                 {
-                    Console.WriteLine(line);
-                    stdoutBuilder.AppendLine(line);
+                    ProcessStreamEvent(line, resultBuilder, logger);
                 }
             });
 
@@ -243,7 +242,136 @@ namespace ADOPullRequestAgent
             await stdoutTask;
             await stderrTask;
 
-            return (process.ExitCode, stdoutBuilder.ToString(), stderrBuilder.ToString());
+            return (process.ExitCode, resultBuilder.ToString(), stderrBuilder.ToString());
+        }
+
+        /// <summary>
+        /// Parses a single JSONL line from the Claude Code stream-json output, logs a human-readable
+        /// summary to the pipeline logs, and extracts the final review text from result events.
+        /// </summary>
+        /// <param name="jsonLine">A single line of JSONL output from Claude Code CLI.</param>
+        /// <param name="resultBuilder">StringBuilder that accumulates the final review text.</param>
+        /// <param name="logger">Logger for streaming event summaries to the pipeline logs.</param>
+        private static void ProcessStreamEvent(string jsonLine, StringBuilder resultBuilder, ILogger logger)
+        {
+            if (string.IsNullOrWhiteSpace(jsonLine))
+            {
+                return;
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(jsonLine);
+                var root = doc.RootElement;
+
+                if (!root.TryGetProperty("type", out var typeElement))
+                {
+                    return;
+                }
+
+                var eventType = typeElement.GetString();
+
+                switch (eventType)
+                {
+                    case "assistant":
+                        ProcessAssistantEvent(root, logger);
+                        break;
+
+                    case "result":
+                        ProcessResultEvent(root, resultBuilder, logger);
+                        break;
+
+                    case "system":
+                        if (root.TryGetProperty("subtype", out var subtype))
+                        {
+                            logger.LogInformation("[Claude] System: {Subtype}", subtype.GetString());
+                        }
+                        break;
+                }
+            }
+            catch (JsonException)
+            {
+                // Malformed JSON line — log it raw and continue
+                logger.LogWarning("[Claude] Non-JSON output: {Line}", jsonLine.Length > 200 ? jsonLine[..200] + "..." : jsonLine);
+            }
+        }
+
+        /// <summary>
+        /// Processes an "assistant" event, logging text content and tool calls to the pipeline logs.
+        /// </summary>
+        private static void ProcessAssistantEvent(JsonElement root, ILogger logger)
+        {
+            if (!root.TryGetProperty("message", out var message))
+            {
+                return;
+            }
+
+            if (!message.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array)
+            {
+                return;
+            }
+
+            foreach (var block in content.EnumerateArray())
+            {
+                if (!block.TryGetProperty("type", out var blockType))
+                {
+                    continue;
+                }
+
+                var blockTypeStr = blockType.GetString();
+
+                if (blockTypeStr == "text" && block.TryGetProperty("text", out var text))
+                {
+                    var textStr = text.GetString();
+                    if (!string.IsNullOrWhiteSpace(textStr))
+                    {
+                        // Log each line of the assistant's text so multi-line output is readable
+                        foreach (var line in textStr.Split('\n'))
+                        {
+                            if (!string.IsNullOrWhiteSpace(line))
+                            {
+                                logger.LogInformation("[Claude] {Line}", line.TrimEnd('\r'));
+                            }
+                        }
+                    }
+                }
+                else if (blockTypeStr == "tool_use")
+                {
+                    var toolName = block.TryGetProperty("name", out var name) ? name.GetString() : "unknown";
+                    logger.LogInformation("[Claude] Calling tool: {Tool}", toolName);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Processes a "result" event, extracting the final review text and logging session metrics.
+        /// </summary>
+        private static void ProcessResultEvent(JsonElement root, StringBuilder resultBuilder, ILogger logger)
+        {
+            // Extract the final result text
+            if (root.TryGetProperty("result", out var result))
+            {
+                resultBuilder.Append(result.GetString());
+            }
+
+            // Log cost and usage metrics if available
+            if (root.TryGetProperty("cost_usd", out var cost))
+            {
+                logger.LogInformation("[Claude] Session cost: ${Cost:F4}", cost.GetDouble());
+            }
+
+            if (root.TryGetProperty("duration_ms", out var duration))
+            {
+                var elapsed = TimeSpan.FromMilliseconds(duration.GetDouble());
+                logger.LogInformation("[Claude] Session duration: {Duration}", elapsed);
+            }
+
+            if (root.TryGetProperty("total_turns", out var turns))
+            {
+                logger.LogInformation("[Claude] Total turns: {Turns}", turns.GetInt32());
+            }
+
+            logger.LogInformation("[Claude] Session complete");
         }
 
         /// <summary>
