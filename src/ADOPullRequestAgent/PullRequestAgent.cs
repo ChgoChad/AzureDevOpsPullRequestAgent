@@ -133,6 +133,7 @@ namespace ADOPullRequestAgent
             {
                 "-p",
                 "--output-format", "stream-json",
+                "--verbose",
                 "--model", _agentOptions.Model,
                 "--system-prompt-file", systemPromptPath,
                 "--mcp-config", mcpConfigPath,
