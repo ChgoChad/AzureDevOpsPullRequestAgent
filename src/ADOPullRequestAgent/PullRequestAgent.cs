@@ -238,7 +238,8 @@ namespace ADOPullRequestAgent
         /// <param name="startInfo">The process start info to configure with provider environment variables.</param>
         /// <param name="logger">Logger for recording which provider is selected.</param>
         /// <exception cref="InvalidOperationException">
-        /// Thrown when no provider is configured (neither ANTHROPIC_API_KEY nor CLAUDE_CODE_USE_FOUNDRY is set).
+        /// Thrown when no provider is configured (neither ANTHROPIC_API_KEY nor CLAUDE_CODE_USE_FOUNDRY is set),
+        /// or when Foundry mode is selected but required configuration variables are missing.
         /// </exception>
         private static void ConfigureProviderEnvironment(ProcessStartInfo startInfo, ILogger logger)
         {
@@ -247,6 +248,25 @@ namespace ADOPullRequestAgent
 
             if (string.Equals(useFoundry, "1", StringComparison.Ordinal))
             {
+                // Validate required Foundry configuration before proceeding.
+                var foundryResource = Environment.GetEnvironmentVariable("ANTHROPIC_FOUNDRY_RESOURCE");
+                if (string.IsNullOrWhiteSpace(foundryResource))
+                {
+                    throw new InvalidOperationException(
+                        "CLAUDE_CODE_USE_FOUNDRY=1 is set but ANTHROPIC_FOUNDRY_RESOURCE is missing. " +
+                        "Set ANTHROPIC_FOUNDRY_RESOURCE to the Azure AI Foundry resource name.");
+                }
+
+                var foundryApiKey = Environment.GetEnvironmentVariable("ANTHROPIC_FOUNDRY_API_KEY");
+                var foundryBaseUrl = Environment.GetEnvironmentVariable("ANTHROPIC_FOUNDRY_BASE_URL");
+                if (string.IsNullOrWhiteSpace(foundryApiKey) && string.IsNullOrWhiteSpace(foundryBaseUrl))
+                {
+                    throw new InvalidOperationException(
+                        "CLAUDE_CODE_USE_FOUNDRY=1 is set but no Foundry authentication is configured. " +
+                        "Set ANTHROPIC_FOUNDRY_API_KEY for API key authentication, " +
+                        "or ANTHROPIC_FOUNDRY_BASE_URL when using managed identity or another credential provider.");
+                }
+
                 // Microsoft Foundry mode — forward all relevant Foundry env vars
                 startInfo.Environment["CLAUDE_CODE_USE_FOUNDRY"] = "1";
 
@@ -269,8 +289,7 @@ namespace ADOPullRequestAgent
                     }
                 }
 
-                var resource = Environment.GetEnvironmentVariable("ANTHROPIC_FOUNDRY_RESOURCE") ?? "(not set)";
-                logger.LogInformation("Using Microsoft Foundry provider (resource: {Resource})", resource);
+                logger.LogInformation("Using Microsoft Foundry provider (resource: {Resource})", foundryResource);
             }
             else if (!string.IsNullOrWhiteSpace(anthropicApiKey))
             {
