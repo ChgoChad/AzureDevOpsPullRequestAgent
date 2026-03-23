@@ -47,7 +47,9 @@ The review output is a Markdown report that can be saved to a file or posted dir
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - [Node.js](https://nodejs.org/) (for the Azure DevOps MCP server via `npx`)
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed (`npm install -g @anthropic-ai/claude-code`)
-- An **Anthropic API key** (set as `ANTHROPIC_API_KEY` environment variable)
+- **One** of the following authentication providers:
+  - **Direct Anthropic API** — an Anthropic API key (set as `ANTHROPIC_API_KEY`)
+  - **Microsoft Foundry** — a Foundry resource with API key (`ANTHROPIC_FOUNDRY_API_KEY`) or Entra ID auth (`az login`)
 - An **Azure DevOps access token** with read access to the target repository and pull requests
 
 ## Getting started
@@ -63,9 +65,21 @@ cd ADOPullRequestAgent
 
 ### 2. Set environment variables
 
+Choose **one** provider:
+
 ```bash
-# Required by Claude Code CLI
+# Option A: Direct Anthropic API
 export ANTHROPIC_API_KEY="<your-anthropic-api-key>"
+
+# Option B: Microsoft Foundry (API key auth)
+export CLAUDE_CODE_USE_FOUNDRY=1
+export ANTHROPIC_FOUNDRY_RESOURCE="<your-foundry-resource-name>"
+export ANTHROPIC_FOUNDRY_API_KEY="<your-foundry-api-key>"
+
+# Option B alt: Microsoft Foundry (Entra ID auth — no API key needed)
+export CLAUDE_CODE_USE_FOUNDRY=1
+export ANTHROPIC_FOUNDRY_RESOURCE="<your-foundry-resource-name>"
+az login  # authenticate with Azure first
 ```
 
 ### 3. Obtain an Azure DevOps token
@@ -115,6 +129,8 @@ Build and run the agent as a container:
 
 ```bash
 docker build -t ado-pr-agent .
+
+# Option A: Direct Anthropic API
 docker run --rm \
   -e ANTHROPIC_API_KEY="<your-api-key>" \
   -v /path/to/local/clone:/sources \
@@ -125,6 +141,21 @@ docker run --rm \
   --project-name <project> \
   --repository-name <repo> \
   --model "claude-sonnet-4-20250514" \
+  --sources-directory /sources
+
+# Option B: Microsoft Foundry
+docker run --rm \
+  -e CLAUDE_CODE_USE_FOUNDRY=1 \
+  -e ANTHROPIC_FOUNDRY_RESOURCE="<your-resource-name>" \
+  -e ANTHROPIC_FOUNDRY_API_KEY="<your-foundry-api-key>" \
+  -v /path/to/local/clone:/sources \
+  ado-pr-agent \
+  --ado-token "<ado-token>" \
+  --pull-request-id <pr-id> \
+  --organization-name <org> \
+  --project-name <project> \
+  --repository-name <repo> \
+  --model "claude-sonnet-4-6" \
   --sources-directory /sources
 ```
 
@@ -144,15 +175,23 @@ The agent is designed to run as a **build validation policy** on pull requests. 
 
 ### Required pipeline variables
 
-These should be configured in a variable group (e.g., `Claude-Code`):
+These should be configured in a variable group (e.g., `PullRequestAgentSecrets`):
 
 | Variable | Description |
 |---|---|
-| `ANTHROPIC_API_KEY` | Anthropic API key for Claude Code CLI |
 | `ACR_NAME` | Azure Container Registry name |
 | `DOCKER_SERVICECONNECTION_NAME` | ACR service connection |
 | `ADO_ORGANIZATION_NAME` | Azure DevOps organization |
 | `MODEL_NAME` | The Claude model to use (e.g., `claude-sonnet-4-20250514`) |
+
+**Provider variables** (choose one set):
+
+| Variable | Provider | Description |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Direct Anthropic | Anthropic API key |
+| `CLAUDE_CODE_USE_FOUNDRY` | Foundry | Set to `1` to enable Foundry mode |
+| `ANTHROPIC_FOUNDRY_RESOURCE` | Foundry | Foundry resource name |
+| `ANTHROPIC_FOUNDRY_API_KEY` | Foundry | Foundry API key (if not using Entra ID) |
 
 > [!NOTE]
 > The pipeline uses `$(System.AccessToken)` for Azure DevOps authentication, so no additional ADO PAT is required when running within a pipeline.

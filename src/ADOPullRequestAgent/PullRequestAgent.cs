@@ -114,7 +114,7 @@ namespace ADOPullRequestAgent
                     },
                     ["microsoft-learn"] = new
                     {
-                        type = "url",
+                        type = "sse",
                         url = "https://learn.microsoft.com/api/mcp"
                     }
                 }
@@ -135,7 +135,8 @@ namespace ADOPullRequestAgent
                 "--model", _agentOptions.Model,
                 "--system-prompt-file", systemPromptPath,
                 "--mcp-config", mcpConfigPath,
-                "--no-session-persistence"
+                "--no-session-persistence",
+                "--allowedTools", "mcp__azure-devops__*,mcp__microsoft-learn__*,Bash(git *),Bash(cat *),Read,Write,Glob,Grep,Edit"
             };
 
             if (_agentOptions.MaxTurns.HasValue)
@@ -170,15 +171,10 @@ namespace ADOPullRequestAgent
                 WorkingDirectory = _agentOptions.SourcesDirectory
             };
 
-            // Pass ANTHROPIC_API_KEY from current environment
-            var anthropicApiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
-            if (string.IsNullOrWhiteSpace(anthropicApiKey))
-            {
-                throw new InvalidOperationException("ANTHROPIC_API_KEY environment variable is not set. This is required for Claude Code CLI.");
-            }
-            startInfo.Environment["ANTHROPIC_API_KEY"] = anthropicApiKey;
+            // Configure the Claude Code provider (direct Anthropic API or Microsoft Foundry)
+            ConfigureProviderEnvironment(startInfo, logger);
 
-            // Pass ADO token for the MCP server
+            // Pass ADO token for the MCP server (provider-independent)
             startInfo.Environment["ADO_MCP_AUTH_TOKEN"] = _adoMcpAuthenticationToken;
 
             foreach (var arg in arguments)
@@ -233,6 +229,78 @@ namespace ADOPullRequestAgent
             }
 
             return (process.ExitCode, stdout, stderr);
+        }
+
+        /// <summary>
+        /// Detects the configured Claude Code provider and sets the appropriate environment variables
+        /// on the process start info. Supports direct Anthropic API and Microsoft Foundry.
+        /// </summary>
+        /// <param name="startInfo">The process start info to configure with provider environment variables.</param>
+        /// <param name="logger">Logger for recording which provider is selected.</param>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when no provider is configured (neither ANTHROPIC_API_KEY nor CLAUDE_CODE_USE_FOUNDRY is set),
+        /// or when Foundry mode is selected but required configuration variables are missing.
+        /// </exception>
+        private static void ConfigureProviderEnvironment(ProcessStartInfo startInfo, ILogger logger)
+        {
+            var useFoundry = Environment.GetEnvironmentVariable("CLAUDE_CODE_USE_FOUNDRY");
+            var anthropicApiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
+
+            if (string.Equals(useFoundry, "1", StringComparison.Ordinal))
+            {
+                // Validate required Foundry configuration before proceeding.
+                var foundryResource = Environment.GetEnvironmentVariable("ANTHROPIC_FOUNDRY_RESOURCE");
+                if (string.IsNullOrWhiteSpace(foundryResource))
+                {
+                    throw new InvalidOperationException(
+                        "CLAUDE_CODE_USE_FOUNDRY=1 is set but ANTHROPIC_FOUNDRY_RESOURCE is missing. " +
+                        "Set ANTHROPIC_FOUNDRY_RESOURCE to the Azure AI Foundry resource name.");
+                }
+
+                // Optional Foundry authentication details:
+                // - ANTHROPIC_FOUNDRY_API_KEY for API key authentication, or
+                // - ANTHROPIC_FOUNDRY_BASE_URL when using managed identity or another credential provider.
+                // Both are forwarded when present, but are not strictly required here so that
+                // the documented Entra ID / managed identity flow (resource + az login) still works.
+
+                // Microsoft Foundry mode — forward all relevant Foundry env vars
+                startInfo.Environment["CLAUDE_CODE_USE_FOUNDRY"] = "1";
+
+                string[] foundryVars =
+                [
+                    "ANTHROPIC_FOUNDRY_RESOURCE",
+                    "ANTHROPIC_FOUNDRY_BASE_URL",
+                    "ANTHROPIC_FOUNDRY_API_KEY",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+                    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+                    "ANTHROPIC_DEFAULT_OPUS_MODEL"
+                ];
+
+                foreach (var name in foundryVars)
+                {
+                    var value = Environment.GetEnvironmentVariable(name);
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        startInfo.Environment[name] = value;
+                    }
+                }
+
+                logger.LogInformation("Using Microsoft Foundry provider (resource: {Resource})", foundryResource);
+            }
+            else if (!string.IsNullOrWhiteSpace(anthropicApiKey))
+            {
+                // Direct Anthropic API mode
+                startInfo.Environment["ANTHROPIC_API_KEY"] = anthropicApiKey;
+                logger.LogInformation("Using direct Anthropic API provider");
+            }
+            else
+            {
+                throw new InvalidOperationException(
+                    "No Claude Code provider configured. Set one of the following:" + Environment.NewLine +
+                    "  - ANTHROPIC_API_KEY for direct Anthropic API access" + Environment.NewLine +
+                    "  - CLAUDE_CODE_USE_FOUNDRY=1 with ANTHROPIC_FOUNDRY_RESOURCE for Microsoft Foundry access" + Environment.NewLine +
+                    "See README.md for details.");
+            }
         }
 
         /// <summary>

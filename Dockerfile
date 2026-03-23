@@ -41,6 +41,15 @@ RUN npm install -g @anthropic-ai/claude-code
 # Pre-install the Azure DevOps MCP package globally so npx doesn't download it at runtime
 RUN npm install -g @azure-devops/mcp@latest
 
+# (Optional) Install Azure CLI for Microsoft Foundry with Entra ID authentication.
+# Enable this by passing --build-arg INSTALL_AZ_CLI=true at build time.
+ARG INSTALL_AZ_CLI=false
+RUN if [ "$INSTALL_AZ_CLI" = "true" ]; then \
+        curl -sL https://aka.ms/InstallAzureCLIDeb -o /tmp/install-azure-cli.sh && \
+        bash /tmp/install-azure-cli.sh && \
+        rm /tmp/install-azure-cli.sh; \
+    fi
+
 COPY --from=build /app/publish .
 
 # Create writable directories for the non-root user
