@@ -284,7 +284,14 @@ namespace ADOPullRequestAgent
                     }
                 }
 
-                var resource = Environment.GetEnvironmentVariable("ANTHROPIC_FOUNDRY_RESOURCE") ?? "(not set)";
+                var resource = Environment.GetEnvironmentVariable("ANTHROPIC_FOUNDRY_RESOURCE");
+                if (string.IsNullOrWhiteSpace(resource))
+                {
+                    throw new InvalidOperationException(
+                        "CLAUDE_CODE_USE_FOUNDRY is set to 1, but ANTHROPIC_FOUNDRY_RESOURCE is not configured. " +
+                        "Set ANTHROPIC_FOUNDRY_RESOURCE to the Microsoft Foundry resource name (and, if needed, " +
+                        "configure ANTHROPIC_FOUNDRY_BASE_URL and ANTHROPIC_FOUNDRY_API_KEY).");
+                }
                 logger.LogInformation("Using Microsoft Foundry provider (resource: {Resource})", resource);
             }
             else if (!string.IsNullOrWhiteSpace(anthropicApiKey))
