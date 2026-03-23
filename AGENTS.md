@@ -84,6 +84,7 @@ The agent supports two Claude Code providers, selected at runtime. Set one group
 | `ANTHROPIC_FOUNDRY_RESOURCE` | Conditional | Foundry resource name — used when Foundry is enabled |
 | `ANTHROPIC_FOUNDRY_API_KEY` | Conditional | Foundry API key — used when Foundry is enabled with API key auth |
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | No | Optional model deployment name override for Foundry |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | No | Optional model deployment name override for Foundry |
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL` | No | Optional model deployment name override for Foundry |
 | **Internal** | | |
 | `ADO_MCP_AUTH_TOKEN` | Runtime | Azure DevOps access token — set internally by `PullRequestAgent` for the MCP server; passed via `--ado-token` CLI arg |
