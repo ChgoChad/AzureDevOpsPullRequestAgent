@@ -257,15 +257,11 @@ namespace ADOPullRequestAgent
                         "Set ANTHROPIC_FOUNDRY_RESOURCE to the Azure AI Foundry resource name.");
                 }
 
-                var foundryApiKey = Environment.GetEnvironmentVariable("ANTHROPIC_FOUNDRY_API_KEY");
-                var foundryBaseUrl = Environment.GetEnvironmentVariable("ANTHROPIC_FOUNDRY_BASE_URL");
-                if (string.IsNullOrWhiteSpace(foundryApiKey) && string.IsNullOrWhiteSpace(foundryBaseUrl))
-                {
-                    throw new InvalidOperationException(
-                        "CLAUDE_CODE_USE_FOUNDRY=1 is set but no Foundry authentication is configured. " +
-                        "Set ANTHROPIC_FOUNDRY_API_KEY for API key authentication, " +
-                        "or ANTHROPIC_FOUNDRY_BASE_URL when using managed identity or another credential provider.");
-                }
+                // Optional Foundry authentication details:
+                // - ANTHROPIC_FOUNDRY_API_KEY for API key authentication, or
+                // - ANTHROPIC_FOUNDRY_BASE_URL when using managed identity or another credential provider.
+                // Both are forwarded when present, but are not strictly required here so that
+                // the documented Entra ID / managed identity flow (resource + az login) still works.
 
                 // Microsoft Foundry mode — forward all relevant Foundry env vars
                 startInfo.Environment["CLAUDE_CODE_USE_FOUNDRY"] = "1";
