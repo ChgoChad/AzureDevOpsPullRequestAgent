@@ -57,7 +57,7 @@ This file provides context and rules for AI-assisted coding platforms (GitHub Co
 # Restore and build
 dotnet build src/ADOPullRequestAgent/ADOPullRequestAgent.csproj
 
-# Run (requires ANTHROPIC_API_KEY env var set)
+# Run (requires provider env vars — see Environment Variables below)
 dotnet run --project src/ADOPullRequestAgent -- \
   --ado-token "<token>" \
   --pull-request-id <id> \
@@ -73,9 +73,19 @@ docker build -t ado-pr-agent .
 
 ## Environment Variables
 
+The agent supports two Claude Code providers, selected at runtime. Set one group:
+
 | Variable | Required | Description |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Yes | Anthropic API key — used by Claude Code CLI for authentication |
+| **Direct Anthropic API** | | |
+| `ANTHROPIC_API_KEY` | Conditional | Anthropic API key — required when using direct Anthropic API |
+| **Microsoft Foundry** | | |
+| `CLAUDE_CODE_USE_FOUNDRY` | Conditional | Set to `1` to enable Microsoft Foundry provider |
+| `ANTHROPIC_FOUNDRY_RESOURCE` | Conditional | Foundry resource name — used when Foundry is enabled |
+| `ANTHROPIC_FOUNDRY_API_KEY` | Conditional | Foundry API key — used when Foundry is enabled with API key auth |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | No | Optional model deployment name override for Foundry |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | No | Optional model deployment name override for Foundry |
+| **Internal** | | |
 | `ADO_MCP_AUTH_TOKEN` | Runtime | Azure DevOps access token — set internally by `PullRequestAgent` for the MCP server; passed via `--ado-token` CLI arg |
 
 ## Key Architecture Decisions
@@ -83,6 +93,7 @@ docker build -t ado-pr-agent .
 - **Claude Code CLI invocation:** `PullRequestAgent.RunAsync()` shells out to `claude -p` (non-interactive mode) via `System.Diagnostics.Process`. It builds an MCP config JSON at runtime with two MCP servers (Azure DevOps for PR data, Microsoft Learn for best practices) and passes the system prompt via `--system-prompt-file`.
 - **System prompt:** The review persona and checklist live in `pullreview.prompt`, which is loaded at runtime. Edits to the review behavior should target this file, not C# code.
 - **MCP server configuration:** The Azure DevOps MCP server is configured in a JSON file passed to `--mcp-config`. The ADO authentication token is passed through the `env` field in the MCP config, keeping it out of command-line arguments.
+- **Provider selection:** The agent supports both direct Anthropic API and Microsoft Foundry as Claude Code providers, selected at runtime via environment variables. The `ConfigureProviderEnvironment` method in `PullRequestAgent.cs` detects `CLAUDE_CODE_USE_FOUNDRY=1` for Foundry mode, otherwise falls back to `ANTHROPIC_API_KEY`.
 - **Output:** The review is written to stdout and optionally to `pull_request_<id>_review.md` in the specified output directory. Claude also saves structured review files (`review/code_review.md` and optionally `review/code_review_summary.md`) as instructed by the system prompt.
 
 ## Guidelines for AI Assistants
