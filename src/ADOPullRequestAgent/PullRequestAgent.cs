@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO.Abstractions;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
@@ -184,14 +185,33 @@ namespace ADOPullRequestAgent
 
             using var process = new Process { StartInfo = startInfo };
 
+            var stdoutBuilder = new StringBuilder();
+            var stderrBuilder = new StringBuilder();
+
             process.Start();
 
-            // Start reading stdout and stderr concurrently before writing stdin to prevent
-            // buffer deadlocks. ReadToEndAsync guarantees all output is drained before the
-            // tasks complete, unlike BeginOutputReadLine which can leave data in the buffer
-            // after WaitForExitAsync returns.
-            var stdoutTask = process.StandardOutput.ReadToEndAsync();
-            var stderrTask = process.StandardError.ReadToEndAsync();
+            // Read stdout and stderr line-by-line in background tasks so output streams
+            // to the console in real-time (visible in pipeline logs) while also being
+            // accumulated for the return value. ReadLineAsync returns null at EOF.
+            var stdoutTask = Task.Run(async () =>
+            {
+                string? line;
+                while ((line = await process.StandardOutput.ReadLineAsync()) != null)
+                {
+                    Console.WriteLine(line);
+                    stdoutBuilder.AppendLine(line);
+                }
+            });
+
+            var stderrTask = Task.Run(async () =>
+            {
+                string? line;
+                while ((line = await process.StandardError.ReadLineAsync()) != null)
+                {
+                    Console.Error.WriteLine(line);
+                    stderrBuilder.AppendLine(line);
+                }
+            });
 
             // Pipe the user prompt to stdin and close it
             await process.StandardInput.WriteLineAsync(userPrompt);
@@ -219,16 +239,11 @@ namespace ADOPullRequestAgent
                 throw new TimeoutException($"Claude Code CLI did not complete within {ProcessTimeout.TotalMinutes} minutes. The process was terminated.");
             }
 
-            // Await stream reads after exit to ensure all buffered output has been captured
-            var stdout = await stdoutTask;
-            var stderr = await stderrTask;
+            // Ensure all buffered output has been fully read before returning
+            await stdoutTask;
+            await stderrTask;
 
-            foreach (var line in stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-            {
-                logger.LogDebug("[claude stderr] {Line}", line.TrimEnd('\r'));
-            }
-
-            return (process.ExitCode, stdout, stderr);
+            return (process.ExitCode, stdoutBuilder.ToString(), stderrBuilder.ToString());
         }
 
         /// <summary>
@@ -285,7 +300,15 @@ namespace ADOPullRequestAgent
                     }
                 }
 
-                logger.LogInformation("Using Microsoft Foundry provider (resource: {Resource})", foundryResource);
+                var resource = Environment.GetEnvironmentVariable("ANTHROPIC_FOUNDRY_RESOURCE");
+                if (string.IsNullOrWhiteSpace(resource))
+                {
+                    throw new InvalidOperationException(
+                        "CLAUDE_CODE_USE_FOUNDRY is set to 1, but ANTHROPIC_FOUNDRY_RESOURCE is not configured. " +
+                        "Set ANTHROPIC_FOUNDRY_RESOURCE to the Microsoft Foundry resource name (and, if needed, " +
+                        "configure ANTHROPIC_FOUNDRY_BASE_URL and ANTHROPIC_FOUNDRY_API_KEY).");
+                }
+                logger.LogInformation("Using Microsoft Foundry provider (resource: {Resource})", resource);
             }
             else if (!string.IsNullOrWhiteSpace(anthropicApiKey))
             {
