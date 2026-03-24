@@ -30,24 +30,24 @@ The repository source code is cloned locally at: {{SOURCES_DIRECTORY}}
 This is your PRIMARY source of truth for the review. You MUST use this local clone to examine the actual code.
 
 MANDATORY workflow — use git CLI commands on this directory:
-1. `git -C {{SOURCES_DIRECTORY}} log --oneline -20` — identify the PR branch commits.
-2. Use the PR metadata from the azure-devops MCP server to determine the correct base and head refs (e.g., `main` and `HEAD`).
-3. **Always start with a diff summary** to assess the size of the change:
-   `git -C {{SOURCES_DIRECTORY}} diff <base>..<head> --stat -- . ':!**/package-lock.json' ':!**/yarn.lock' ':!**/*.lock' ':!**/*.designer.cs' ':!**/*.generated.cs' ':!**/*.min.js' ':!**/*.min.css' ':!**/*.png' ':!**/*.jpg' ':!**/*.gif' ':!**/*.ico' ':!**/*.svg' ':!**/*.woff' ':!**/*.woff2' ':!**/*.ttf' ':!**/*.eot'`
-   This tells you exactly how many files changed and how many lines were added/removed. Use this to plan your approach.
-4. **Choose your diff strategy based on the --stat output:**
-   - **Small PRs (≤500 total lines changed):** Retrieve the full diff in one command:
-     `git -C {{SOURCES_DIRECTORY}} diff <base>..<head> -- . ':!**/package-lock.json' ':!**/yarn.lock' ':!**/*.lock' ':!**/*.designer.cs' ':!**/*.generated.cs' ':!**/*.min.js' ':!**/*.min.css' ':!**/*.png' ':!**/*.jpg' ':!**/*.gif' ':!**/*.ico' ':!**/*.svg' ':!**/*.woff' ':!**/*.woff2' ':!**/*.ttf' ':!**/*.eot'`
-   - **Large PRs (>500 total lines changed):** Do NOT retrieve the full diff. Instead, diff each file individually:
-     `git -C {{SOURCES_DIRECTORY}} diff <base>..<head> -- <filepath>`
-     Prioritize files by risk: security-sensitive code first (auth, crypto, input handling, API controllers), then business logic, then tests, then config/infra. Skip files that are clearly auto-generated even if not caught by the exclusion patterns.
-5. `git -C {{SOURCES_DIRECTORY}} show <commit>:<filepath>` — read the full content of a changed file at a specific commit when you need surrounding context.
-6. `git -C {{SOURCES_DIRECTORY}} diff <base>..<head> -- <filepath>` — get the diff for a specific file.
-7. Read files directly from the local directory (e.g., `cat {{SOURCES_DIRECTORY}}/path/to/file.cs`) for full context around changed lines.
 
-IMPORTANT: Always exclude generated files, lock files, minified assets, and binary files from diffs. These bloat context without adding review value. The pathspec exclusions in steps 3/4 handle the most common cases, but also skip any file that is clearly auto-generated (e.g., migration snapshots, compiled output, vendor directories).
+1. **Get the PR metadata** from the azure-devops MCP server to determine the target branch (e.g., `main`) and source branch.
 
-Do NOT retrieve the entire diff of a large PR in a single command — this wastes your context window and degrades review quality.
+2. **Compute the merge base** — this is the exact fork point of the PR branch:
+   `git -C {{SOURCES_DIRECTORY}} merge-base origin/<target-branch> HEAD`
+   Save the resulting commit hash. ALL diffs below MUST use this merge-base commit as the base, not a branch name.
+
+3. **Get ONLY the PR diff** — the files changed between the merge base and HEAD:
+   `git -C {{SOURCES_DIRECTORY}} diff <merge-base-hash>..HEAD`
+   This produces exactly the changes introduced by the PR — nothing more, nothing less.
+
+4. For additional context on specific files:
+   - `git -C {{SOURCES_DIRECTORY}} diff <merge-base-hash>..HEAD -- <filepath>` — diff for one file.
+   - `git -C {{SOURCES_DIRECTORY}} show HEAD:<filepath>` — read the full current content of a changed file.
+   - Read files directly from the local directory (e.g., `cat {{SOURCES_DIRECTORY}}/path/to/file.cs`) for surrounding context.
+
+CRITICAL: You MUST use `merge-base` to compute the correct base commit. Do NOT use `git diff main..HEAD` or `git diff origin/main..HEAD` directly — these can include unrelated commits and produce an enormous diff that is NOT the PR diff. The merge-base approach guarantees you see only the PR's changes.
+
 Do NOT rely solely on the azure-devops MCP server for diffs or file contents — it may return incomplete or truncated data.
 Do NOT fabricate code or produce a review based on assumptions about the code. If you cannot read a file, state it explicitly.
 </local_sources>
