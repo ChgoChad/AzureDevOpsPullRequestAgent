@@ -56,14 +56,7 @@ RUN if [ "$INSTALL_AZ_CLI" = "true" ]; then \
 
 COPY --from=build /app/publish .
 
-# Create writable directories for the non-root user
-# /sources is the mount point for the local repository clone
-# /tmp is needed for temporary system prompt and MCP config files
-RUN mkdir -p /output /sources /tmp && \
-    chown "$APP_UID":"$APP_UID" /output /sources /tmp && \
-    chmod 755 /output /sources /tmp
-
-# Run as non-root user for security
-USER $APP_UID
+# Create mount-point directories
+RUN mkdir -p /output /sources
 
 ENTRYPOINT ["dotnet", "ADOPullRequestAgent.dll"]

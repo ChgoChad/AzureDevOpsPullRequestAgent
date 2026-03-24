@@ -18,7 +18,7 @@ variables:
   ${{ if ne(parameters.pullRequestId, '') }}:
     value: ${{ parameters.pullRequestId }}
   ${{ else }}:
-    value: $(resolvedPullRequestId)
+    value: $(System.PullRequest.PullRequestId)
 
 stages:
   - stage: Build
@@ -29,7 +29,6 @@ stages:
         steps:
         - bash: |
             mkdir -p "$(Build.ArtifactStagingDirectory)/output/review"
-            chmod -R 777 "$(Build.ArtifactStagingDirectory)/output"
             docker rm -f pr-agent-container 2>/dev/null || true
           displayName: 'Prepare environment'
 
@@ -52,7 +51,6 @@ stages:
             arguments: >-
               --rm
               --name pr-agent-container
-              --user $(id -u):$(id -g)
               -e ANTHROPIC_API_KEY=$(ANTHROPIC_API_KEY)
               -e ADO_AUTH_TOKEN=$(System.AccessToken)
               -v $(Build.SourcesDirectory):/sources
