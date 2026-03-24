@@ -28,8 +28,8 @@ stages:
         displayName: 'Run Pull Request Code Review Agent'
         steps:
         - bash: |
-            mkdir -p "$(Build.ArtifactStagingDirectory)/output"
-            chmod 777 "$(Build.ArtifactStagingDirectory)/output"
+            mkdir -p "$(Build.ArtifactStagingDirectory)/output/review"
+            chmod -R 777 "$(Build.ArtifactStagingDirectory)/output"
             docker rm -f pr-agent-container 2>/dev/null || true
           displayName: 'Prepare environment'
 
@@ -52,6 +52,7 @@ stages:
             arguments: >-
               --rm
               --name pr-agent-container
+              --user $(id -u):$(id -g)
               -e ANTHROPIC_API_KEY=$(ANTHROPIC_API_KEY)
               -e ADO_AUTH_TOKEN=$(System.AccessToken)
               -v $(Build.SourcesDirectory):/sources
