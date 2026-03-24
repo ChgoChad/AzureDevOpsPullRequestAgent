@@ -68,6 +68,7 @@ namespace ADOPullRequestAgent
 
                 logger.LogInformation("Starting Claude Code review for PR #{PullRequestId} in {Project}/{Repository}", pullRequestId, projectName, repositoryName);
                 logger.LogInformation("Using model: {Model}", _agentOptions.Model);
+                logger.LogInformation("Agent ver: 1.0.7");
 
                 var reviewStopwatch = Stopwatch.StartNew();
                 var (exitCode, stdout, stderr) = await RunClaudeProcessAsync(arguments, userPrompt, logger);

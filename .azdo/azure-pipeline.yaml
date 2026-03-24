@@ -64,6 +64,9 @@ stages:
               --sources-directory /sources
               --output-directory /output
 
+        - bash: docker run --rm -v "$(Build.ArtifactStagingDirectory)/output:/output" alpine chmod -R a+rw /output
+          displayName: 'Fix output file permissions'
+
         - task: PublishPipelineArtifact@1
           displayName: 'Publish review artifact'
           inputs:
@@ -71,21 +74,33 @@ stages:
             artifact: 'PullRequestReview'
 
         - powershell: |
-            $summaryFile = "$(Build.ArtifactStagingDirectory)/output/review/code_review_summary.md"
-            if (Test-Path $summaryFile) {
-              $reviewFile = $summaryFile
-            } else {
-              $reviewFile = "$(Build.ArtifactStagingDirectory)/output/review/code_review.md"
-            }
-            $content = Get-Content -Path $reviewFile -Raw
-            $body = @{
-              comments = @(@{ parentCommentId = 0; content = $content; commentType = 1 })
-              status = 1
-            } | ConvertTo-Json -Depth 3
             $uri = "$(System.CollectionUri)$(System.TeamProject)/_apis/git/repositories/$(Build.Repository.Name)/pullRequests/$(resolvedPullRequestId)/threads?api-version=7.1"
             $headers = @{
               Authorization  = "Bearer $(System.AccessToken)"
               'Content-Type' = "application/json"
             }
-            Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -ContentType "application/json"
-          displayName: 'Post review as PR comment'
+
+            # Post the summary (or full review if no summary exists) as the first comment
+            $summaryFile = "$(Build.ArtifactStagingDirectory)/output/review/code_review_summary.md"
+            $fullFile = "$(Build.ArtifactStagingDirectory)/output/review/code_review.md"
+
+            if (Test-Path $summaryFile) {
+              $summaryContent = Get-Content -Path $summaryFile -Raw
+              $body = @{
+                comments = @(@{ parentCommentId = 0; content = $summaryContent; commentType = 1 })
+                status = 1
+              } | ConvertTo-Json -Depth 3
+              Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -ContentType "application/json"
+              Write-Host "Posted summary review comment"
+            }
+
+            if (Test-Path $fullFile) {
+              $fullContent = Get-Content -Path $fullFile -Raw
+              $body = @{
+                comments = @(@{ parentCommentId = 0; content = $fullContent; commentType = 1 })
+                status = 1
+              } | ConvertTo-Json -Depth 3
+              Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -ContentType "application/json"
+              Write-Host "Posted full review comment"
+            }
+          displayName: 'Post review as PR comments'
