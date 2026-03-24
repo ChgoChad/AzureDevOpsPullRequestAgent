@@ -16,7 +16,7 @@ stages:
       - job: PullRequestReview
         displayName: 'Run Pull Request Code Review Agent'
         steps:
-        - script: mkdir -p "$(Build.ArtifactStagingDirectory)/output"
+        - bash: mkdir -p "$(Build.ArtifactStagingDirectory)/output"
           displayName: 'Create output directory'
 
         - task: Docker@2
