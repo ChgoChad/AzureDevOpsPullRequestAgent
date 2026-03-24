@@ -270,7 +270,7 @@ namespace ADOPullRequestAgent
                     return;
                 }
 
-                var eventType = typeElement.GetString();
+                var eventType = typeElement.ValueKind == JsonValueKind.String ? typeElement.GetString() : null;
 
                 switch (eventType)
                 {
@@ -285,7 +285,7 @@ namespace ADOPullRequestAgent
                     case "system":
                         if (root.TryGetProperty("subtype", out var subtype))
                         {
-                            logger.LogInformation("[Claude] System: {Subtype}", subtype.GetString());
+                            logger.LogInformation("[Claude] System: {Subtype}", subtype.ValueKind == JsonValueKind.String ? subtype.GetString() : subtype.ToString());
                         }
                         break;
                 }
@@ -294,6 +294,11 @@ namespace ADOPullRequestAgent
             {
                 // Malformed JSON line — log it raw and continue
                 logger.LogWarning("[Claude] Non-JSON output: {Line}", jsonLine.Length > 200 ? jsonLine[..200] + "..." : jsonLine);
+            }
+            catch (Exception ex)
+            {
+                // Unexpected error processing a stream event — log and continue to keep the stdout reader running
+                logger.LogWarning(ex, "[Claude] Unexpected error processing stream event; skipping line.");
             }
         }
 
@@ -319,11 +324,11 @@ namespace ADOPullRequestAgent
                     continue;
                 }
 
-                var blockTypeStr = blockType.GetString();
+                var blockTypeStr = blockType.ValueKind == JsonValueKind.String ? blockType.GetString() : null;
 
                 if (blockTypeStr == "text" && block.TryGetProperty("text", out var text))
                 {
-                    var textStr = text.GetString();
+                    var textStr = text.ValueKind == JsonValueKind.String ? text.GetString() : null;
                     if (!string.IsNullOrWhiteSpace(textStr))
                     {
                         // Log each line of the assistant's text so multi-line output is readable
@@ -338,7 +343,7 @@ namespace ADOPullRequestAgent
                 }
                 else if (blockTypeStr == "tool_use")
                 {
-                    var toolName = block.TryGetProperty("name", out var name) ? name.GetString() : "unknown";
+                    var toolName = block.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String ? name.GetString() : "unknown";
                     logger.LogInformation("[Claude] Calling tool: {Tool}", toolName);
                 }
             }
@@ -369,7 +374,7 @@ namespace ADOPullRequestAgent
             // Log cost and usage metrics if available
             if (root.TryGetProperty("cost_usd", out var cost))
             {
-                double costValue;
+                double costValue = 0;
                 var parsed = false;
 
                 if (cost.ValueKind == JsonValueKind.Number)
@@ -410,7 +415,7 @@ namespace ADOPullRequestAgent
 
             if (root.TryGetProperty("duration_ms", out var duration))
             {
-                double durationMs;
+                double durationMs = 0;
                 var parsed = false;
 
                 if (duration.ValueKind == JsonValueKind.Number)
@@ -452,7 +457,7 @@ namespace ADOPullRequestAgent
 
             if (root.TryGetProperty("total_turns", out var turns))
             {
-                int turnCount;
+                int turnCount = 0;
                 var parsed = false;
 
                 if (turns.ValueKind == JsonValueKind.Number)
