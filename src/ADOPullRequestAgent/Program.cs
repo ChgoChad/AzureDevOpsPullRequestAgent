@@ -133,13 +133,6 @@ namespace ADOPullRequestAgent
             Console.WriteLine("== Metrics ==");
             Console.WriteLine($"Total processing time: {totalStopwatch.Elapsed.TotalSeconds:F2}s ({totalStopwatch.Elapsed})");
 
-            if (!string.IsNullOrWhiteSpace(outputDirectory))
-            {
-                using (var writer = new StreamWriter(fileSystem.FileStream.New(Path.Combine(outputDirectory, $"pull_request_{pullRequestId}_review.md"), FileMode.Create)))
-                {
-                    await writer.WriteLineAsync(response);
-                }
-            }
         }
     }
 }
