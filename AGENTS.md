@@ -91,7 +91,7 @@ The agent supports two Claude Code providers, selected at runtime. Set one group
 
 ## Key Architecture Decisions
 
-- **Claude Code CLI invocation:** `PullRequestAgent.RunAsync()` shells out to `claude -p` (non-interactive mode) via `System.Diagnostics.Process`. It builds an MCP config JSON at runtime with two MCP servers (Azure DevOps for PR data, Microsoft Learn for best practices) and passes the system prompt via `--system-prompt-file`.
+- **Claude Code CLI invocation:** `PullRequestAgent.RunAsync()` shells out to `claude -p` (non-interactive mode) via `System.Diagnostics.Process` using `--output-format stream-json`. It builds an MCP config JSON at runtime with two MCP servers (Azure DevOps for PR data, Microsoft Learn for best practices) and passes the system prompt via `--system-prompt-file`. The stream-json output is parsed line-by-line so that tool calls, assistant text, and session metrics appear in the pipeline logs in real-time.
 - **System prompt:** The review persona and checklist live in `pullreview.prompt`, which is loaded at runtime. Edits to the review behavior should target this file, not C# code.
 - **MCP server configuration:** The Azure DevOps MCP server is configured in a JSON file passed to `--mcp-config`. The ADO authentication token is passed through the `env` field in the MCP config, keeping it out of command-line arguments.
 - **Provider selection:** The agent supports both direct Anthropic API and Microsoft Foundry as Claude Code providers, selected at runtime via environment variables. The `ConfigureProviderEnvironment` method in `PullRequestAgent.cs` detects `CLAUDE_CODE_USE_FOUNDRY=1` for Foundry mode, otherwise falls back to `ANTHROPIC_API_KEY`.

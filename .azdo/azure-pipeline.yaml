@@ -16,6 +16,9 @@ stages:
       - job: PullRequestReview
         displayName: 'Run Pull Request Code Review Agent'
         steps:
+        - bash: mkdir -p "$(Build.ArtifactStagingDirectory)/output"
+          displayName: 'Create output directory'
+
         - task: Docker@2
           displayName: 'Run Pull Request Review'
           inputs:
@@ -33,6 +36,7 @@ stages:
             #   -e ANTHROPIC_FOUNDRY_RESOURCE=$(ANTHROPIC_FOUNDRY_RESOURCE)
             # =============================================
             arguments: >-
+              --rm
               --name pr-agent-container
               -e ANTHROPIC_API_KEY=$(ANTHROPIC_API_KEY)
               -v $(Build.SourcesDirectory):/sources

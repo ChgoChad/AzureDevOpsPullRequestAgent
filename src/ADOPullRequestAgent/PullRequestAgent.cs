@@ -132,7 +132,8 @@ namespace ADOPullRequestAgent
             var args = new List<string>
             {
                 "-p",
-                "--output-format", "text",
+                "--output-format", "stream-json",
+                "--verbose",
                 "--model", _agentOptions.Model,
                 "--system-prompt-file", systemPromptPath,
                 "--mcp-config", mcpConfigPath,
@@ -185,21 +186,20 @@ namespace ADOPullRequestAgent
 
             using var process = new Process { StartInfo = startInfo };
 
-            var stdoutBuilder = new StringBuilder();
+            var resultBuilder = new StringBuilder();
             var stderrBuilder = new StringBuilder();
 
             process.Start();
 
-            // Read stdout and stderr line-by-line in background tasks so output streams
-            // to the console in real-time (visible in pipeline logs) while also being
-            // accumulated for the return value. ReadLineAsync returns null at EOF.
+            // Read stdout JSONL events line-by-line, parse each event, and stream
+            // human-readable summaries to the console (visible in pipeline logs).
+            // The final review text is extracted from the "result" event.
             var stdoutTask = Task.Run(async () =>
             {
                 string? line;
                 while ((line = await process.StandardOutput.ReadLineAsync()) != null)
                 {
-                    Console.WriteLine(line);
-                    stdoutBuilder.AppendLine(line);
+                    ProcessStreamEvent(line, resultBuilder, logger);
                 }
             });
 
@@ -243,7 +243,260 @@ namespace ADOPullRequestAgent
             await stdoutTask;
             await stderrTask;
 
-            return (process.ExitCode, stdoutBuilder.ToString(), stderrBuilder.ToString());
+            return (process.ExitCode, resultBuilder.ToString(), stderrBuilder.ToString());
+        }
+
+        /// <summary>
+        /// Parses a single JSONL line from the Claude Code stream-json output, logs a human-readable
+        /// summary to the pipeline logs, and extracts the final review text from result events.
+        /// </summary>
+        /// <param name="jsonLine">A single line of JSONL output from Claude Code CLI.</param>
+        /// <param name="resultBuilder">StringBuilder that accumulates the final review text.</param>
+        /// <param name="logger">Logger for streaming event summaries to the pipeline logs.</param>
+        private static void ProcessStreamEvent(string jsonLine, StringBuilder resultBuilder, ILogger logger)
+        {
+            if (string.IsNullOrWhiteSpace(jsonLine))
+            {
+                return;
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(jsonLine);
+                var root = doc.RootElement;
+
+                if (!root.TryGetProperty("type", out var typeElement))
+                {
+                    return;
+                }
+
+                var eventType = typeElement.ValueKind == JsonValueKind.String ? typeElement.GetString() : null;
+
+                switch (eventType)
+                {
+                    case "assistant":
+                        ProcessAssistantEvent(root, logger);
+                        break;
+
+                    case "result":
+                        ProcessResultEvent(root, resultBuilder, logger);
+                        break;
+
+                    case "system":
+                        if (root.TryGetProperty("subtype", out var subtype))
+                        {
+                            logger.LogInformation("[Claude] System: {Subtype}", subtype.ValueKind == JsonValueKind.String ? subtype.GetString() : subtype.ToString());
+                        }
+                        break;
+                }
+            }
+            catch (JsonException)
+            {
+                // Malformed JSON line — log it raw and continue
+                logger.LogWarning("[Claude] Non-JSON output: {Line}", jsonLine.Length > 200 ? jsonLine[..200] + "..." : jsonLine);
+            }
+            catch (Exception ex)
+            {
+                // Unexpected error processing a stream event — log and continue to keep the stdout reader running
+                logger.LogWarning(ex, "[Claude] Unexpected error processing stream event; skipping line.");
+            }
+        }
+
+        /// <summary>
+        /// Processes an "assistant" event, logging text content and tool calls to the pipeline logs.
+        /// </summary>
+        private static void ProcessAssistantEvent(JsonElement root, ILogger logger)
+        {
+            if (!root.TryGetProperty("message", out var message))
+            {
+                return;
+            }
+
+            if (!message.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array)
+            {
+                return;
+            }
+
+            foreach (var block in content.EnumerateArray())
+            {
+                if (!block.TryGetProperty("type", out var blockType))
+                {
+                    continue;
+                }
+
+                var blockTypeStr = blockType.ValueKind == JsonValueKind.String ? blockType.GetString() : null;
+
+                if (blockTypeStr == "text" && block.TryGetProperty("text", out var text))
+                {
+                    var textStr = text.ValueKind == JsonValueKind.String ? text.GetString() : null;
+                    if (!string.IsNullOrWhiteSpace(textStr))
+                    {
+                        // Log each line of the assistant's text so multi-line output is readable
+                        foreach (var line in textStr.Split('\n'))
+                        {
+                            if (!string.IsNullOrWhiteSpace(line))
+                            {
+                                logger.LogInformation("[Claude] {Line}", line.TrimEnd('\r'));
+                            }
+                        }
+                    }
+                }
+                else if (blockTypeStr == "tool_use")
+                {
+                    var toolName = block.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String ? name.GetString() : "unknown";
+                    logger.LogInformation("[Claude] Calling tool: {Tool}", toolName);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Processes a "result" event, extracting the final review text and logging session metrics.
+        /// </summary>
+        private static void ProcessResultEvent(JsonElement root, StringBuilder resultBuilder, ILogger logger)
+        {
+            // Extract the final result text
+            if (root.TryGetProperty("result", out var result))
+            {
+                if (result.ValueKind == JsonValueKind.String)
+                {
+                    var resultText = result.GetString();
+                    if (!string.IsNullOrEmpty(resultText))
+                    {
+                        resultBuilder.Append(resultText);
+                    }
+                }
+                else
+                {
+                    logger.LogDebug("Unexpected JSON type for 'result': {Kind}", result.ValueKind);
+                }
+            }
+
+            // Log cost and usage metrics if available
+            if (root.TryGetProperty("cost_usd", out var cost))
+            {
+                double costValue = 0;
+                var parsed = false;
+
+                if (cost.ValueKind == JsonValueKind.Number)
+                {
+                    try
+                    {
+                        costValue = cost.GetDouble();
+                        parsed = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogDebug(ex, "Failed to read numeric 'cost_usd' value.");
+                    }
+                }
+                else if (cost.ValueKind == JsonValueKind.String)
+                {
+                    var costText = cost.GetString();
+                    if (!string.IsNullOrWhiteSpace(costText) && double.TryParse(costText, out var parsedCost))
+                    {
+                        costValue = parsedCost;
+                        parsed = true;
+                    }
+                    else
+                    {
+                        logger.LogDebug("Unable to parse string 'cost_usd' value: \"{Value}\"", costText);
+                    }
+                }
+                else
+                {
+                    logger.LogDebug("Unexpected JSON type for 'cost_usd': {Kind}", cost.ValueKind);
+                }
+
+                if (parsed)
+                {
+                    logger.LogInformation("[Claude] Session cost: ${Cost:F4}", costValue);
+                }
+            }
+
+            if (root.TryGetProperty("duration_ms", out var duration))
+            {
+                double durationMs = 0;
+                var parsed = false;
+
+                if (duration.ValueKind == JsonValueKind.Number)
+                {
+                    try
+                    {
+                        durationMs = duration.GetDouble();
+                        parsed = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogDebug(ex, "Failed to read numeric 'duration_ms' value.");
+                    }
+                }
+                else if (duration.ValueKind == JsonValueKind.String)
+                {
+                    var durationText = duration.GetString();
+                    if (!string.IsNullOrWhiteSpace(durationText) && double.TryParse(durationText, out var parsedDuration))
+                    {
+                        durationMs = parsedDuration;
+                        parsed = true;
+                    }
+                    else
+                    {
+                        logger.LogDebug("Unable to parse string 'duration_ms' value: \"{Value}\"", durationText);
+                    }
+                }
+                else
+                {
+                    logger.LogDebug("Unexpected JSON type for 'duration_ms': {Kind}", duration.ValueKind);
+                }
+
+                if (parsed)
+                {
+                    var elapsed = TimeSpan.FromMilliseconds(durationMs);
+                    logger.LogInformation("[Claude] Session duration: {Duration}", elapsed);
+                }
+            }
+
+            if (root.TryGetProperty("total_turns", out var turns))
+            {
+                int turnCount = 0;
+                var parsed = false;
+
+                if (turns.ValueKind == JsonValueKind.Number)
+                {
+                    try
+                    {
+                        turnCount = turns.GetInt32();
+                        parsed = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogDebug(ex, "Failed to read numeric 'total_turns' value.");
+                    }
+                }
+                else if (turns.ValueKind == JsonValueKind.String)
+                {
+                    var turnsText = turns.GetString();
+                    if (!string.IsNullOrWhiteSpace(turnsText) && int.TryParse(turnsText, out var parsedTurns))
+                    {
+                        turnCount = parsedTurns;
+                        parsed = true;
+                    }
+                    else
+                    {
+                        logger.LogDebug("Unable to parse string 'total_turns' value: \"{Value}\"", turnsText);
+                    }
+                }
+                else
+                {
+                    logger.LogDebug("Unexpected JSON type for 'total_turns': {Kind}", turns.ValueKind);
+                }
+
+                if (parsed)
+                {
+                    logger.LogInformation("[Claude] Total turns: {Turns}", turnCount);
+                }
+            }
+
+            logger.LogInformation("[Claude] Session complete");
         }
 
         /// <summary>
