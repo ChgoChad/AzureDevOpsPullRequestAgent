@@ -7,7 +7,7 @@ pool:
   name: '<value>'
 
 variables:
-- group: 'PullRequestAgentSecrets' # Variable group containing secrets like ANTHROPIC_API_KEY
+- group: 'PullRequestAgentSecrets' # Contains provider secrets (ANTHROPIC_API_KEY or Foundry vars)
 
 stages:
   - stage: Build
@@ -21,6 +21,17 @@ stages:
           inputs:
             containerRegistry: $(DOCKER_SERVICECONNECTION_NAME)
             command: 'run'
+            # === Provider Configuration (choose ONE) ===
+            # Option A: Direct Anthropic API
+            #   -e ANTHROPIC_API_KEY=$(ANTHROPIC_API_KEY)
+            # Option B: Microsoft Foundry (API key auth)
+            #   -e CLAUDE_CODE_USE_FOUNDRY=1
+            #   -e ANTHROPIC_FOUNDRY_RESOURCE=$(ANTHROPIC_FOUNDRY_RESOURCE)
+            #   -e ANTHROPIC_FOUNDRY_API_KEY=$(ANTHROPIC_FOUNDRY_API_KEY)
+            # Option B alt: Microsoft Foundry (Entra ID auth — no API key)
+            #   -e CLAUDE_CODE_USE_FOUNDRY=1
+            #   -e ANTHROPIC_FOUNDRY_RESOURCE=$(ANTHROPIC_FOUNDRY_RESOURCE)
+            # =============================================
             arguments: >-
               --name pr-agent-container
               -e ANTHROPIC_API_KEY=$(ANTHROPIC_API_KEY)
