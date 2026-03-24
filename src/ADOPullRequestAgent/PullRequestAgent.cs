@@ -352,24 +352,143 @@ namespace ADOPullRequestAgent
             // Extract the final result text
             if (root.TryGetProperty("result", out var result))
             {
-                resultBuilder.Append(result.GetString());
+                if (result.ValueKind == JsonValueKind.String)
+                {
+                    var resultText = result.GetString();
+                    if (!string.IsNullOrEmpty(resultText))
+                    {
+                        resultBuilder.Append(resultText);
+                    }
+                }
+                else
+                {
+                    logger.LogDebug("Unexpected JSON type for 'result': {Kind}", result.ValueKind);
+                }
             }
 
             // Log cost and usage metrics if available
             if (root.TryGetProperty("cost_usd", out var cost))
             {
-                logger.LogInformation("[Claude] Session cost: ${Cost:F4}", cost.GetDouble());
+                double costValue;
+                var parsed = false;
+
+                if (cost.ValueKind == JsonValueKind.Number)
+                {
+                    try
+                    {
+                        costValue = cost.GetDouble();
+                        parsed = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogDebug(ex, "Failed to read numeric 'cost_usd' value.");
+                    }
+                }
+                else if (cost.ValueKind == JsonValueKind.String)
+                {
+                    var costText = cost.GetString();
+                    if (!string.IsNullOrWhiteSpace(costText) && double.TryParse(costText, out var parsedCost))
+                    {
+                        costValue = parsedCost;
+                        parsed = true;
+                    }
+                    else
+                    {
+                        logger.LogDebug("Unable to parse string 'cost_usd' value: \"{Value}\"", costText);
+                    }
+                }
+                else
+                {
+                    logger.LogDebug("Unexpected JSON type for 'cost_usd': {Kind}", cost.ValueKind);
+                }
+
+                if (parsed)
+                {
+                    logger.LogInformation("[Claude] Session cost: ${Cost:F4}", costValue);
+                }
             }
 
             if (root.TryGetProperty("duration_ms", out var duration))
             {
-                var elapsed = TimeSpan.FromMilliseconds(duration.GetDouble());
-                logger.LogInformation("[Claude] Session duration: {Duration}", elapsed);
+                double durationMs;
+                var parsed = false;
+
+                if (duration.ValueKind == JsonValueKind.Number)
+                {
+                    try
+                    {
+                        durationMs = duration.GetDouble();
+                        parsed = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogDebug(ex, "Failed to read numeric 'duration_ms' value.");
+                    }
+                }
+                else if (duration.ValueKind == JsonValueKind.String)
+                {
+                    var durationText = duration.GetString();
+                    if (!string.IsNullOrWhiteSpace(durationText) && double.TryParse(durationText, out var parsedDuration))
+                    {
+                        durationMs = parsedDuration;
+                        parsed = true;
+                    }
+                    else
+                    {
+                        logger.LogDebug("Unable to parse string 'duration_ms' value: \"{Value}\"", durationText);
+                    }
+                }
+                else
+                {
+                    logger.LogDebug("Unexpected JSON type for 'duration_ms': {Kind}", duration.ValueKind);
+                }
+
+                if (parsed)
+                {
+                    var elapsed = TimeSpan.FromMilliseconds(durationMs);
+                    logger.LogInformation("[Claude] Session duration: {Duration}", elapsed);
+                }
             }
 
             if (root.TryGetProperty("total_turns", out var turns))
             {
-                logger.LogInformation("[Claude] Total turns: {Turns}", turns.GetInt32());
+                int turnCount;
+                var parsed = false;
+
+                if (turns.ValueKind == JsonValueKind.Number)
+                {
+                    try
+                    {
+                        turnCount = turns.GetInt32();
+                        parsed = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogDebug(ex, "Failed to read numeric 'total_turns' value.");
+                    }
+                }
+                else if (turns.ValueKind == JsonValueKind.String)
+                {
+                    var turnsText = turns.GetString();
+                    if (!string.IsNullOrWhiteSpace(turnsText) && int.TryParse(turnsText, out var parsedTurns))
+                    {
+                        turnCount = parsedTurns;
+                        parsed = true;
+                    }
+                    else
+                    {
+                        logger.LogDebug("Unable to parse string 'total_turns' value: \"{Value}\"", turnsText);
+                    }
+                }
+                else
+                {
+                    logger.LogDebug("Unexpected JSON type for 'total_turns': {Kind}", turns.ValueKind);
+                }
+
+                if (parsed)
+                {
+                    logger.LogInformation("[Claude] Total turns: {Turns}", turnCount);
+                }
             }
 
             logger.LogInformation("[Claude] Session complete");
