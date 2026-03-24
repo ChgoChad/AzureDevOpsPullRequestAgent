@@ -19,8 +19,8 @@ namespace ADOPullRequestAgent
         {
             Option<string> adoTokenOption = new("--ado-token", "-at")
             {
-                Description = "The token to use for authentication. To use this agent locally using your identity, use the Az CLI: az account get-access-token --resource 499b84ac-1321-427f-aa17-267ca6975798",
-                Required = true
+                Description = "The token to use for authentication. Falls back to ADO_AUTH_TOKEN environment variable if not provided. To use this agent locally using your identity, use the Az CLI: az account get-access-token --resource 499b84ac-1321-427f-aa17-267ca6975798",
+                Required = false
             };
 
             Option<int> pullRequestIdOption = new("--pull-request-id", "-id")
@@ -94,7 +94,13 @@ namespace ADOPullRequestAgent
                 return;
             }
 
-            var token = parseResult.GetRequiredValue<string>(adoTokenOption);
+            var token = parseResult.GetValue<string>(adoTokenOption)
+                        ?? Environment.GetEnvironmentVariable("ADO_AUTH_TOKEN");
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                await Console.Error.WriteLineAsync("Error: ADO token is required. Provide --ado-token or set the ADO_AUTH_TOKEN environment variable.");
+                return;
+            }
             var pullRequestId = parseResult.GetRequiredValue<int>(pullRequestIdOption);
             var organizationName = parseResult.GetRequiredValue<string>(organizationNameOption);
             var projectName = parseResult.GetRequiredValue<string>(projectNameOption);
