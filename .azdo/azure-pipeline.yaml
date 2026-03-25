@@ -53,6 +53,7 @@ stages:
               --name pr-agent-container
               -e ANTHROPIC_API_KEY=$(ANTHROPIC_API_KEY)
               -e ADO_AUTH_TOKEN=$(System.AccessToken)
+              -e CONTEXT7_API_KEY=$(CONTEXT7_API_KEY)
               -v $(Build.SourcesDirectory):/sources
               -v $(Build.ArtifactStagingDirectory)/output:/output
               $(ACR_NAME).azurecr.io/ado/pullrequestagent:latest

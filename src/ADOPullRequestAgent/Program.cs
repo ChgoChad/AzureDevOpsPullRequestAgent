@@ -96,35 +96,36 @@ namespace ADOPullRequestAgent
 
             var token = parseResult.GetValue<string>(adoTokenOption)
                         ?? Environment.GetEnvironmentVariable("ADO_AUTH_TOKEN");
+                        
             if (string.IsNullOrWhiteSpace(token))
             {
                 await Console.Error.WriteLineAsync("Error: ADO token is required. Provide --ado-token or set the ADO_AUTH_TOKEN environment variable.");
                 return;
             }
-            var pullRequestId = parseResult.GetRequiredValue<int>(pullRequestIdOption);
+            var pullRequestId    = parseResult.GetRequiredValue<int>(pullRequestIdOption);
             var organizationName = parseResult.GetRequiredValue<string>(organizationNameOption);
-            var projectName = parseResult.GetRequiredValue<string>(projectNameOption);
-            var repositoryName = parseResult.GetRequiredValue<string>(repositoryNameOption);
-            var model = parseResult.GetRequiredValue<string>(modelOption);
-            var outputDirectory = parseResult.GetValue<string>(outputDirectoryOption);
+            var projectName      = parseResult.GetRequiredValue<string>(projectNameOption);
+            var repositoryName   = parseResult.GetRequiredValue<string>(repositoryNameOption);
+            var model            = parseResult.GetRequiredValue<string>(modelOption);
+            var outputDirectory  = parseResult.GetValue<string>(outputDirectoryOption);
             var sourcesDirectory = parseResult.GetRequiredValue<string>(sourcesDirectoryOption);
-            var maxTurns = parseResult.GetValue<int?>(maxTurnsOption);
-            var maxBudgetUsd = parseResult.GetValue<decimal?>(maxBudgetUsdOption);
+            var maxTurns         = parseResult.GetValue<int?>(maxTurnsOption);
+            var maxBudgetUsd     = parseResult.GetValue<decimal?>(maxBudgetUsdOption);
 
             var agentOptions = new AgentOptions
             {
-                Model = model,
+                Model            = model,
                 SourcesDirectory = sourcesDirectory,
-                OutputDirectory = outputDirectory,
-                MaxTurns = maxTurns,
-                MaxBudgetUsd = maxBudgetUsd
+                OutputDirectory  = outputDirectory,
+                MaxTurns         = maxTurns,
+                MaxBudgetUsd     = maxBudgetUsd
             };
 
             var fileSystem = new FileSystem();
-            var agent = new PullRequestAgent(fileSystem, token, agentOptions);
+            var agent      = new PullRequestAgent(fileSystem, token, agentOptions);
 
             var totalStopwatch = Stopwatch.StartNew();
-            var response = await agent.RunAsync(pullRequestId, organizationName, projectName, repositoryName);
+            var response       = await agent.RunAsync(pullRequestId, organizationName, projectName, repositoryName);
             totalStopwatch.Stop();
 
             Console.WriteLine(response);
