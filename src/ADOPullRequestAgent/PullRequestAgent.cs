@@ -37,7 +37,7 @@ namespace ADOPullRequestAgent
         {
             // Load the system prompt and inject the sources directory and output directory
             var systemInstructions = await _fileSystem.File.ReadAllTextAsync("pullreview.prompt");
-                systemInstructions = systemInstructions.Replace("{{SOURCES_DIRECTORY}}", _agentOptions.SourcesDirectory);
+            systemInstructions = systemInstructions.Replace("{{SOURCES_DIRECTORY}}", _agentOptions.SourcesDirectory);
             var outputDir          = !string.IsNullOrWhiteSpace(_agentOptions.OutputDirectory)
                 ? _agentOptions.OutputDirectory
                 : _agentOptions.SourcesDirectory;
