@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO.Abstractions;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 
 namespace ADOPullRequestAgent
@@ -130,7 +131,7 @@ namespace ADOPullRequestAgent
                 }
             };
 
-            return JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
+            return JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
         }
 
         /// <summary>
