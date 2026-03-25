@@ -28,32 +28,35 @@ stages:
         displayName: 'Run Pull Request Code Review Agent'
         steps:
         - bash: |
-            mkdir -p "$(Build.ArtifactStagingDirectory)/output/review"
+            set -e
+            mkdir -p "$(Build.ArtifactStagingDirectory)/output/review" || exit 1
             docker rm -f pr-agent-container 2>/dev/null || true
+            exit 0
           displayName: 'Prepare environment'
 
         - task: Docker@2
           displayName: 'Run Pull Request Review'
+          # === Provider Configuration (choose ONE) ===
+          # Option A: Direct Anthropic API
+          #   ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
+          # Option B: Microsoft Foundry (API key auth)
+          #   CLAUDE_CODE_USE_FOUNDRY:1
+          #   NTHROPIC_FOUNDRY_RESOURCE: $(ANTHROPIC_FOUNDRY_RESOURCE)
+          #   ANTHROPIC_FOUNDRY_API_KEY: $(ANTHROPIC_FOUNDRY_API_KEY)
+          # Option B alt: Microsoft Foundry (Entra ID auth — no API key)
+          #   CLAUDE_CODE_USE_FOUNDRY:1
+          #   ANTHROPIC_FOUNDRY_RESOURCE: $(ANTHROPIC_FOUNDRY_RESOURCE)
+          # =============================================
+          env:
+            ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
+            ADO_AUTH_TOKEN: $(System.AccessToken)
+            CONTEXT7_API_KEY: $(CONTEXT7_API_KEY)
           inputs:
             containerRegistry: $(DOCKER_SERVICECONNECTION_NAME)
             command: 'run'
-            # === Provider Configuration (choose ONE) ===
-            # Option A: Direct Anthropic API
-            #   -e ANTHROPIC_API_KEY=$(ANTHROPIC_API_KEY)
-            # Option B: Microsoft Foundry (API key auth)
-            #   -e CLAUDE_CODE_USE_FOUNDRY=1
-            #   -e ANTHROPIC_FOUNDRY_RESOURCE=$(ANTHROPIC_FOUNDRY_RESOURCE)
-            #   -e ANTHROPIC_FOUNDRY_API_KEY=$(ANTHROPIC_FOUNDRY_API_KEY)
-            # Option B alt: Microsoft Foundry (Entra ID auth — no API key)
-            #   -e CLAUDE_CODE_USE_FOUNDRY=1
-            #   -e ANTHROPIC_FOUNDRY_RESOURCE=$(ANTHROPIC_FOUNDRY_RESOURCE)
-            # =============================================
             arguments: >-
               --rm
               --name pr-agent-container
-              -e ANTHROPIC_API_KEY=$(ANTHROPIC_API_KEY)
-              -e ADO_AUTH_TOKEN=$(System.AccessToken)
-              -e CONTEXT7_API_KEY=$(CONTEXT7_API_KEY)
               -v $(Build.SourcesDirectory):/sources
               -v $(Build.ArtifactStagingDirectory)/output:/output
               $(ACR_NAME).azurecr.io/ado/pullrequestagent:latest
