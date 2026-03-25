@@ -40,6 +40,7 @@ The review output is a Markdown report that can be saved to a file or posted dir
 │              │      ├─────────────────────┤
 │              │      │ Azure DevOps        │──▶ PR metadata, work items
 │              │      │ Microsoft Learn     │──▶ Best practices docs
+│              │      │ Context7            │──▶ Non-Microsoft Documentation
 └──────────────┘      └─────────────────────┘
                       ┌─────────────────────┐
                       │ Local Git Clone     │──▶ PR diffs, source files
