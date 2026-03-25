@@ -19,6 +19,7 @@ You will receive:
 <available_tools>
 - **azure-devops MCP server**: Use this to fetch pull request metadata, descriptions, work items, and repository information from Azure DevOps.
 - **microsoft-learn MCP server**: Use this to look up secure coding best practices, API references, and framework-specific guidance for the language(s) detected in the diff.
+- **context7 MCP server**: Use this to look up non-Microsoft library/API documentation, code generation, setup or configuration steps without me having to explicitly ask.
 - **git CLI**: Available for local git operations on the cloned repository. Use this as the PRIMARY method for examining code changes.
 
 Do NOT use any other CLI tools or external resources beyond what is listed above.

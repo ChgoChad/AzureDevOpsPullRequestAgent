@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO.Abstractions;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 
 namespace ADOPullRequestAgent
@@ -38,7 +39,7 @@ namespace ADOPullRequestAgent
             // Load the system prompt and inject the sources directory and output directory
             var systemInstructions = await _fileSystem.File.ReadAllTextAsync("pullreview.prompt");
             systemInstructions = systemInstructions.Replace("{{SOURCES_DIRECTORY}}", _agentOptions.SourcesDirectory);
-            var outputDir = !string.IsNullOrWhiteSpace(_agentOptions.OutputDirectory)
+            var outputDir          = !string.IsNullOrWhiteSpace(_agentOptions.OutputDirectory)
                 ? _agentOptions.OutputDirectory
                 : _agentOptions.SourcesDirectory;
             systemInstructions = systemInstructions.Replace("{{OUTPUT_DIRECTORY}}", outputDir);
@@ -68,7 +69,7 @@ namespace ADOPullRequestAgent
 
                 logger.LogInformation("Starting Claude Code review for PR #{PullRequestId} in {Project}/{Repository}", pullRequestId, projectName, repositoryName);
                 logger.LogInformation("Using model: {Model}", _agentOptions.Model);
-                logger.LogInformation("Agent ver: 1.0.7");
+                logger.LogInformation("Agent ver: 1.0.8 - Claude API Only");
 
                 var reviewStopwatch = Stopwatch.StartNew();
                 var (exitCode, stdout, stderr) = await RunClaudeProcessAsync(arguments, userPrompt, logger);
@@ -118,11 +119,19 @@ namespace ADOPullRequestAgent
                     {
                         type = "sse",
                         url = "https://learn.microsoft.com/api/mcp"
+                    },
+                    ["context7"] = new
+                    {
+                        type = "sse",
+                        url = "https://mcp.context7.com/mcp",
+                        headers = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CONTEXT7_API_KEY"))
+                            ? new Dictionary<string, string> { ["Authorization"] = $"Bearer {Environment.GetEnvironmentVariable("CONTEXT7_API_KEY")}" }
+                            : null
                     }
                 }
             };
 
-            return JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
+            return JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
         }
 
         /// <summary>
@@ -139,7 +148,7 @@ namespace ADOPullRequestAgent
                 "--system-prompt-file", systemPromptPath,
                 "--mcp-config", mcpConfigPath,
                 "--no-session-persistence",
-                "--allowedTools", "mcp__azure-devops__*,mcp__microsoft-learn__*,Bash(git *),Bash(cat *),Read,Write,Glob,Grep,Edit"
+                "--allowedTools", "mcp__azure-devops__*,mcp__microsoft-learn__*,mcp__context7__*,Bash(git *),Bash(cat *),Read,Write,Glob,Grep,Edit"
             };
 
             if (_agentOptions.MaxTurns.HasValue)

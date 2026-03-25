@@ -22,17 +22,29 @@ The review output is a Markdown report that can be saved to a file or posted dir
 ## How it works
 
 ```
-┌──────────────┐      ┌─────────────────────┐
+                              ┌─────────────────────┐
+                              │  Anthropic API      │
+                         ┌───▶│  (direct)           │
+                         │    └─────────────────────┘
+┌──────────────┐      ┌──┴──────────────────┐
 │  ADO Pull    │─────▶│  Claude Code CLI    │
 │  Request     │      │  (claude -p)        │
-│  Agent       │      └─────────────────────┘
-│              │               │
-│              │      ┌────────┴────────┐
-│              │      │   MCP Servers   │
-│              │      ├─────────────────┤
-│              │      │ Azure DevOps    │──▶ PR diffs, work items
-│              │      │ Microsoft Learn │──▶ Best practices docs
-└──────────────┘      └─────────────────┘
+│  Agent       │      └──┬──────────────────┘
+│              │         │    ┌─────────────────────┐
+│              │         └───▶│  Microsoft Foundry  │
+│              │              │  (Azure AI)         │
+│              │              └─────────────────────┘
+│              │
+│              │      ┌─────────────────────┐
+│              │      │   MCP Servers       │
+│              │      ├─────────────────────┤
+│              │      │ Azure DevOps        │──▶ PR metadata, work items
+│              │      │ Microsoft Learn     │──▶ Best practices docs
+│              │      │ Context7            │──▶ Non-Microsoft Documentation
+└──────────────┘      └─────────────────────┘
+                      ┌─────────────────────┐
+                      │ Local Git Clone     │──▶ PR diffs, source files
+                      └─────────────────────┘
 ```
 
 1. The agent receives a pull request ID, ADO coordinates (org, project, repo), and a **local sources directory** via CLI arguments.
@@ -107,13 +119,13 @@ dotnet run --project src/ADOPullRequestAgent -- \
 
 The `--sources-directory` option points to the local directory where the repository source code is cloned. The agent uses this path to run git commands and read source files during the review.
 
-The `--output-directory` option writes the review to `pull_request_<id>_review.md` in the specified directory.
+The `--output-directory` option specifies where Claude saves the review files (`review/code_review.md` and optionally `review/code_review_summary.md`).
 
 ### CLI options
 
 | Option | Alias | Description |
 |---|---|---|
-| `--ado-token` | `-at` | Azure DevOps access token (required) |
+| `--ado-token` | `-at` | Azure DevOps access token (or set `ADO_AUTH_TOKEN` env var) |
 | `--pull-request-id` | `-id` | ID of the pull request to review (required) |
 | `--organization-name` | `-o` | Azure DevOps organization name (required) |
 | `--project-name` | `-p` | Azure DevOps project name (required) |
@@ -134,30 +146,34 @@ docker build -t ado-pr-agent .
 # Option A: Direct Anthropic API
 docker run --rm \
   -e ANTHROPIC_API_KEY="<your-api-key>" \
+  -e ADO_AUTH_TOKEN="<ado-token>" \
   -v /path/to/local/clone:/sources \
+  -v /path/to/output:/output \
   ado-pr-agent \
-  --ado-token "<ado-token>" \
   --pull-request-id <pr-id> \
   --organization-name <org> \
   --project-name <project> \
   --repository-name <repo> \
   --model "claude-sonnet-4-20250514" \
-  --sources-directory /sources
+  --sources-directory /sources \
+  --output-directory /output
 
 # Option B: Microsoft Foundry
 docker run --rm \
   -e CLAUDE_CODE_USE_FOUNDRY=1 \
   -e ANTHROPIC_FOUNDRY_RESOURCE="<your-resource-name>" \
   -e ANTHROPIC_FOUNDRY_API_KEY="<your-foundry-api-key>" \
+  -e ADO_AUTH_TOKEN="<ado-token>" \
   -v /path/to/local/clone:/sources \
+  -v /path/to/output:/output \
   ado-pr-agent \
-  --ado-token "<ado-token>" \
   --pull-request-id <pr-id> \
   --organization-name <org> \
   --project-name <project> \
   --repository-name <repo> \
   --model "claude-sonnet-4-6" \
-  --sources-directory /sources
+  --sources-directory /sources \
+  --output-directory /output
 ```
 
 ## Azure DevOps pipeline integration
