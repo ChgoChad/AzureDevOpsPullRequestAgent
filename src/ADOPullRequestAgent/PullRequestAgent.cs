@@ -147,7 +147,7 @@ namespace ADOPullRequestAgent
                 "--system-prompt-file", systemPromptPath,
                 "--mcp-config", mcpConfigPath,
                 "--no-session-persistence",
-                "--allowedTools", "mcp__azure-devops__*,mcp__microsoft-learn__*,Bash(git *),Bash(cat *),Read,Write,Glob,Grep,Edit"
+                "--allowedTools", "mcp__azure-devops__*,mcp__microsoft-learn__*,mcp__context7__*,Bash(git *),Bash(cat *),Read,Write,Glob,Grep,Edit"
             };
 
             if (_agentOptions.MaxTurns.HasValue)
