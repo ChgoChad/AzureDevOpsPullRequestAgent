@@ -30,6 +30,7 @@ stages:
         - bash: |
             set -e
             mkdir -p "$(Build.ArtifactStagingDirectory)/output/review" || exit 1
+            chmod -R 777 "$(Build.ArtifactStagingDirectory)/output"
             docker rm -f pr-agent-container 2>/dev/null || true
             exit 0
           displayName: 'Prepare environment'
@@ -41,7 +42,7 @@ stages:
           #   ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
           # Option B: Microsoft Foundry (API key auth)
           #   CLAUDE_CODE_USE_FOUNDRY:1
-          #   NTHROPIC_FOUNDRY_RESOURCE: $(ANTHROPIC_FOUNDRY_RESOURCE)
+          #   ANTHROPIC_FOUNDRY_RESOURCE: $(ANTHROPIC_FOUNDRY_RESOURCE)
           #   ANTHROPIC_FOUNDRY_API_KEY: $(ANTHROPIC_FOUNDRY_API_KEY)
           # Option B alt: Microsoft Foundry (Entra ID auth — no API key)
           #   CLAUDE_CODE_USE_FOUNDRY:1
@@ -59,6 +60,9 @@ stages:
               --name pr-agent-container
               -v $(Build.SourcesDirectory):/sources
               -v $(Build.ArtifactStagingDirectory)/output:/output
+              -e ANTHROPIC_API_KEY=$(ANTHROPIC_API_KEY)
+              -e ADO_AUTH_TOKEN=$(System.AccessToken)
+              -e CONTEXT7_API_KEY=$(CONTEXT7_API_KEY)
               $(ACR_NAME).azurecr.io/ado/pullrequestagent:latest
               --pull-request-id $(resolvedPullRequestId)
               --organization-name $(ADO_ORGANIZATION_NAME)
