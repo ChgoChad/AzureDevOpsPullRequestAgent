@@ -36,14 +36,6 @@ namespace ADOPullRequestAgent
         /// <returns>The review output as a string.</returns>
         public async Task<string> RunAsync(int pullRequestId, string organizationName, string projectName, string repositoryName)
         {
-            // Load the system prompt and inject the sources directory and output directory
-            var promptPath = _fileSystem.Path.Combine(_agentOptions.SourcesDirectory, ".claude", "pullreview.prompt.md");
-            var systemInstructions = await _fileSystem.File.ReadAllTextAsync(promptPath);
-            systemInstructions = systemInstructions.Replace("{{SOURCES_DIRECTORY}}", _agentOptions.SourcesDirectory);
-            var outputDir          = !string.IsNullOrWhiteSpace(_agentOptions.OutputDirectory)
-                ? _agentOptions.OutputDirectory
-                : _agentOptions.SourcesDirectory;
-            systemInstructions = systemInstructions.Replace("{{OUTPUT_DIRECTORY}}", outputDir);
 
             using var loggerFactory = LoggerFactory.Create(builder =>
             {
@@ -51,6 +43,17 @@ namespace ADOPullRequestAgent
                 builder.AddConsole();
             });
             var logger = loggerFactory.CreateLogger<PullRequestAgent>();
+
+            // Load the system prompt and inject the sources directory and output directory
+            var promptPath = _fileSystem.Path.Combine(_agentOptions.SourcesDirectory, ".claude", "pullreview.prompt.md");
+            var systemInstructions = await _fileSystem.File.ReadAllTextAsync(promptPath);
+            logger.LogInformation("Loaded system prompt from: {PromptPath}", promptPath);
+            
+            systemInstructions = systemInstructions.Replace("{{SOURCES_DIRECTORY}}", _agentOptions.SourcesDirectory);
+            var outputDir          = !string.IsNullOrWhiteSpace(_agentOptions.OutputDirectory)
+                ? _agentOptions.OutputDirectory
+                : _agentOptions.SourcesDirectory;
+            systemInstructions = systemInstructions.Replace("{{OUTPUT_DIRECTORY}}", outputDir);
 
             // Write system prompt to a temp file for --system-prompt-file
             var tempDir = _fileSystem.Path.GetTempPath();
@@ -61,6 +64,7 @@ namespace ADOPullRequestAgent
             var mcpConfigPath = _fileSystem.Path.Combine(tempDir, _fileSystem.Path.GetRandomFileName());
             var mcpConfig = BuildMcpConfig(organizationName);
             await _fileSystem.File.WriteAllTextAsync(mcpConfigPath, mcpConfig);
+            logger.LogInformation("Wrote MCP config to: {McpConfigPath}", mcpConfigPath);
 
             try
             {
@@ -70,7 +74,7 @@ namespace ADOPullRequestAgent
 
                 logger.LogInformation("Starting Claude Code review for PR #{PullRequestId} in {Project}/{Repository}", pullRequestId, projectName, repositoryName);
                 logger.LogInformation("Using model: {Model}", _agentOptions.Model);
-                logger.LogInformation("Agent ver: 1.0.8 - Claude API Only");
+                logger.LogInformation("Agent ver: 1.0.9 - Claude API Only");
 
                 var reviewStopwatch = Stopwatch.StartNew();
                 var (exitCode, stdout, stderr) = await RunClaudeProcessAsync(arguments, userPrompt, logger);
