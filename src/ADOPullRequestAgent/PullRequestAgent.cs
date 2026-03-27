@@ -37,7 +37,8 @@ namespace ADOPullRequestAgent
         public async Task<string> RunAsync(int pullRequestId, string organizationName, string projectName, string repositoryName)
         {
             // Load the system prompt and inject the sources directory and output directory
-            var systemInstructions = await _fileSystem.File.ReadAllTextAsync("pullreview.prompt");
+            var promptPath = _fileSystem.Path.Combine(_agentOptions.SourcesDirectory, ".claude", "pullreview.prompt.md");
+            var systemInstructions = await _fileSystem.File.ReadAllTextAsync(promptPath);
             systemInstructions = systemInstructions.Replace("{{SOURCES_DIRECTORY}}", _agentOptions.SourcesDirectory);
             var outputDir          = !string.IsNullOrWhiteSpace(_agentOptions.OutputDirectory)
                 ? _agentOptions.OutputDirectory
