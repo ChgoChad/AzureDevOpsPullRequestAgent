@@ -35,6 +35,19 @@ stages:
             exit 0
           displayName: 'Prepare environment'
 
+        - bash: |
+            set -e
+            cd "$(Build.SourcesDirectory)"
+            # Embed auth token in the repo's local git config so it persists
+            # when the directory is mounted into the Docker container.
+            ENCODED_TOKEN=$(printf ":$(System.AccessToken)" | base64 -w 0)
+            git config --local http.extraheader "Authorization: Basic $ENCODED_TOKEN"
+            # Fetch target and source branch refs so merge-base can be computed inside the container
+            git fetch origin
+          displayName: 'Configure git credentials for Docker'
+          env:
+            SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
         - task: Docker@2
           displayName: 'Run Pull Request Review'
           # === Provider Configuration (choose ONE) ===
